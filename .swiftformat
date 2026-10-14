@@ -1,0 +1,31 @@
+# Swift 5.9-compatible layout, shared by local formatting and CI.
+--swift-version 5.9
+--min-version 0.63.0
+--exclude .build,.swiftpm,DerivedData,DevApp
+
+# Four-space indentation and readable multiline lists.
+--indent 4
+--ifdef no-indent
+--max-width 100
+--wrap-arguments before-first
+--wrap-parameters before-first
+--wrap-collections before-first
+--wrap-conditions before-first
+--wrap-return-type never
+--wrap-effects never
+--allow-partial-wrapping false
+--no-wrap-operators .
+--guard-else auto
+--semicolons never
+--linebreaks lf
+
+# Use layout rules explicitly so formatter upgrades do not add code rewrites.
+--rules blankLineAfterImports,blankLinesAtEndOfScope,blankLinesAtStartOfScope,blankLinesBetweenScopes
+--rules blankLineAfterSwitchCase,blankLinesAfterGuardStatements
+--rules braces,consecutiveBlankLines,consecutiveSpaces,elseOnSameLine,emptyBraces,indent
+--rules linebreakAtEndOfFile,linebreaks,semicolons,singlePropertyPerLine
+--rules spaceAroundBraces,spaceAroundBrackets,spaceAroundComments,spaceAroundGenerics,spaceAroundOperators
+--rules spaceAroundParens,spaceInsideBraces,spaceInsideBrackets,spaceInsideGenerics,spaceInsideParens
+--rules trailingCommas,trailingSpace,wrap,wrapArguments,wrapCaseBodies,wrapEnumCases,wrapFunctionBodies
+--rules wrapGuardStatementBodies,wrapIfStatementBodies,wrapLoopBodies,wrapPropertyBodies
+--rules wrapMultilineStatementBraces

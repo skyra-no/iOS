@@ -1,0 +1,84 @@
+# Automatic Linux checks; opt-in Xcode builds and simulator tests.
+name: Swift Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swift-package-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  formatting:
+    name: Swift formatting
+    runs-on: ubuntu-22.04
+    container: swift:5.9-jammy
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install check utilities
+        run: apt-get update -qq && apt-get install -y --no-install-recommends curl unzip jq
+      - name: Check Swift formatting
+        run: bash Scripts/format-swift.sh --lint
+      - name: Validate package contract
+        run: bash Scripts/check-package.sh
+
+  package:
+    if: github.event_name == 'workflow_dispatch'
+    name: Package (Xcode ${{ matrix.xcode }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Older and newer installed Xcodes; neither is the declared minimum toolchain.
+          - os: macos-15
+            xcode: '16.4'
+          - os: macos-15
+            xcode: '26.3'
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Validate package contract
+        run: bash Scripts/check-package.sh
+      - name: Build package
+        run: swift build
+      - name: Test package on macOS
+        run: swift test
+      - name: List package schemes
+        run: xcodebuild -list
+      - name: Build for iOS Simulator
+        run: >-
+          xcodebuild -scheme Skyra
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath DerivedData
+          build
+      - name: Run tests on iOS Simulator
+        run: |
+          # Use this toolchain's runtime generation, rather than the first (possibly much older) device.
+          # Older runtimes can lack Swift framework libraries linked by the current SDK's test bundle.
+          SDK_MAJOR=$(xcrun --sdk iphonesimulator --show-sdk-version | cut -d. -f1)
+          DEVICE=$(xcrun simctl list devices available -j | jq -er \
+            --arg prefix "com.apple.CoreSimulator.SimRuntime.iOS-${SDK_MAJOR}-" \
+            '[.devices | to_entries[] | select(.key | startswith($prefix)) |
+              .value[] | select(.name | startswith("iPhone"))][0].udid //
+              error("No available iPhone simulator for the selected SDK generation")')
+          xcodebuild -scheme Skyra -destination "platform=iOS Simulator,id=$DEVICE" \
+            -parallel-testing-enabled NO -derivedDataPath DerivedData test
