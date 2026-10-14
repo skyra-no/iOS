@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+.gonk/
+.gonk.json
+.opencode/
+DevApp/
+AGENTS.md
+**/AGENTS.md
+.env
+.env.*
+!.env.example
+*.xcresult/
