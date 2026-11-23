@@ -2,6 +2,12 @@
 
 Until 1.0, a new minor version can change the API. A patch version does not.
 
+## 0.2.0
+
+- `Skyra.messageHandler` receives what the survey in a web view reports and stores
+  it. Register it under `Skyra.messageHandlerName` instead of writing your own
+  `WKScriptMessageHandler`.
+
 ## 0.1.0
 
 First version. Requires Xcode 16.0 or later and iOS 15 or later.
