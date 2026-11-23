@@ -1,21 +1,22 @@
-// Owns native survey persistence: raw storage backends plus StateStore's identity and retention rules.
-// Presentation reads history/restoration here; SurveyController writes progress and final outcomes.
+// Owns what Skyra keeps on the device: the storage backends, and StateStore's rules for the visitor's state.
+// The decision request reads the whole state here; sync writes to it.
 import Foundation
 
 /// Atomically read and replace values across instances sharing a namespace.
-/// Supplied native records contain no typed answers or traits.
+/// The stored value holds a visitor ID and survey states. It never holds traits or written answers. A survey the visitor is
+/// part-way through in a web view also has the widget's progress, which names the options they chose.
 public protocol SkyraStorage: AnyObject {
-    /// StateStore calls this for an atomic read-transform-write. Return the stored bytes; nil removes
-    /// the key. Implementations must serialize updates across instances sharing the same namespace.
+    /// One atomic read-transform-write. Call `transform` exactly once with the stored bytes, store
+    /// what it returns (nil removes the key), and return that. It can be called from any thread, so
+    /// serialize updates across instances sharing the same namespace.
     func update(key: String, _ transform: (Data?) throws -> Data?) throws -> Data?
 }
 
-/// The SDK creates a new memory store for each ephemeral instance.
-public final class SkyraMemoryStorage: SkyraStorage {
+/// Keeps state in memory for the lifetime of the instance. Used for ephemeral persistence and tests.
+public final class SkyraMemoryStorage: SkyraStorage, @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String: Data] = [:]
 
-    /// Skyra or the app creates an empty, instance-local backend for ephemeral persistence.
     public init() {}
 
     /// StateStore uses this to replace one in-memory value while holding this backend's lock.
@@ -31,13 +32,13 @@ public final class SkyraMemoryStorage: SkyraStorage {
 }
 
 /// Process-serialized storage. UserDefaults does not support cross-process transactions.
-public final class SkyraUserDefaultsStorage: SkyraStorage {
+public final class SkyraUserDefaultsStorage: SkyraStorage, @unchecked Sendable {
     private static let lock = NSLock()
     private let defaults: UserDefaults
     private let namespace: String
 
-    /// Skyra or the app chooses the UserDefaults suite and prefix used for durable survey records.
-    public init(defaults: UserDefaults = .standard, namespace: String = "no.skyra.sdk.v1") {
+    /// Skyra or the app chooses the UserDefaults suite and key prefix used for the visitor's state.
+    public init(defaults: UserDefaults = .standard, namespace: String = "no.skyra.sdk") {
         self.defaults = defaults
         self.namespace = namespace
     }
@@ -63,186 +64,184 @@ public final class SkyraUserDefaultsStorage: SkyraStorage {
     }
 }
 
-/// One survey's status and expiry, with resumable progress only while it is in Capture state.
-struct NativeRecord: Codable {
-    let visitorId: String
-    let sessionId: String
-    let status: SkyraSavedState.Status
-    let updatedAt: Int64
-    let expiresAt: Int64
-    let active: SkyraSavedState?
-}
+/// Applies Skyra's rules over a raw SkyraStorage backend: one visitor, one entry per survey, and expiry.
+/// Every operation is one atomic read-transform-write, so instances sharing a backend never lose updates.
+final class StateStore: @unchecked Sendable {
+    /// A survey entry is dropped 400 days after its state last changed: longer than the longest
+    /// retake time (12 months), so the decision service still sees a finished survey until then.
+    static let retentionMilliseconds: Int64 = 400 * 24 * 60 * 60 * 1000
+    /// A time this far after the device's clock is still accepted, to allow for clocks that differ.
+    /// A later time is not believed: such an entry could never be replaced and would never expire.
+    static let futureToleranceMilliseconds: Int64 = 5 * 60 * 1000
+    /// The most survey entries kept. Over this, the entries that changed last are the ones kept.
+    static let maximumSurveys = 200
+    /// The most bytes all progress may take together. Over this, the oldest progress goes first.
+    static let maximumTotalProgressBytes = 1024 * 1024
+    static let version = 2
 
-/// Applies survey-specific rules over a raw SkyraStorage backend: identity, restoration, and expiry.
-/// A class keeps failure bookkeeping and its lock shared across calls from the SDK and popup controller.
-final class StateStore {
-    /// All records for one hosted origin, encoded atomically under a single backend key.
-    struct Envelope: Codable {
-        var version = 1
-        var visitorId: String
-        var visitorExpiresAt: Int64
-        var surveys: [String: NativeRecord] = [:]
+    /// Reads the bytes stored under one organisation's key: `{ "version": 2, "state": … }`, with the
+    /// state in the decision contract's shape. Nil when they are unreadable or of another version.
+    /// A state without a usable visitor ID keeps its surveys and gets a new visitor.
+    private static func decode(_ data: Data, now: Int64) -> SkyraState? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            root["version"] as? Int == version,
+            let stored = root["state"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        let visitorId = (stored["visitorId"] as? String).flatMap {
+            Identifiers.isValidVisitorID($0) ? $0 : nil
+        }
+        return SkyraState(
+            visitorId: visitorId ?? Identifiers.makeULID(now: now),
+            surveys: SkyraState.surveys(stored["surveys"])
+        )
+    }
+
+    /// Sorted keys give the same bytes for the same state.
+    private static func encode(_ state: SkyraState) throws -> Data {
+        try JSONSerialization.data(
+            withJSONObject: ["version": version, "state": state.jsonObject] as [String: Any],
+            options: [.sortedKeys]
+        )
     }
 
     let storage: SkyraStorage
+    let organization: String
     let key: String
     let clock: () -> Int64
-    private var failedTerminals: Set<String> = []
-    private let failureLock = NSLock()
 
-    /// Skyra creates this for its hosted origin. Tests inject a clock to exercise retention boundaries.
-    init(
-        storage: SkyraStorage,
-        origin: Origin,
-        clock: @escaping () -> Int64 = Clock.nowMilliseconds
-    ) {
+    /// Skyra creates one store per organisation. Tests inject a clock to exercise time boundaries.
+    init(storage: SkyraStorage, organization: String, clock: @escaping () -> Int64) {
         self.storage = storage
-        key = origin.key
+        self.organization = organization
+        key = "state.v\(Self.version).\(organization)"
         self.clock = clock
     }
 
-    /// Internal writes use this to decode, prune, apply a change, and atomically encode the envelope.
-    /// It allocates or rotates visitor identity as needed; read-only eligibility uses history instead.
+    /// The visitor's whole state. A first call creates the visitor ID, as the decision contract requires.
+    func snapshot() throws -> SkyraState {
+        try transaction { _, _ in }
+    }
+
+    /// Merges another copy of this visitor's state into the stored one and returns the result.
+    /// Entries for other organisations are ignored. Throws `SkyraError.invalidState` when the other
+    /// visitor ID is not valid, or claims to be created later than the clock allows.
+    func merge(_ other: SkyraState) throws -> SkyraState {
+        try transaction { state, now in
+            // The device's own ID always passes, even after its clock was set back.
+            guard
+                other.visitorId == state.visitorId
+                || Identifiers.isValidVisitorID(other.visitorId)
+                && Identifiers.isVisitorID(other.visitorId, createdBy: Self.latestTime(now))
+            else {
+                throw SkyraError.invalidState
+            }
+
+            var incoming = other
+            incoming.surveys = self.pruned(incoming.surveys, now: now)
+            state = state.merged(with: incoming)
+        }
+    }
+
+    /// Decodes the stored state, drops what is no longer valid, applies `body`, and writes the result back.
+    /// Unreadable or outdated bytes start a new visitor. A backend that throws surfaces as storageFailure.
     @discardableResult
-    func transaction(_ body: (inout Envelope) throws -> Void) throws -> Envelope {
+    private func transaction(_ body: (inout SkyraState, Int64) throws -> Void) throws
+        -> SkyraState
+    {
         let now = clock()
-        var result: Envelope?
-        _ = try storage.update(key: key) { data in
-            var envelope = data.flatMap { try? JSONDecoder().decode(Envelope.self, from: $0) }
-            if envelope?.version != 1 {
-                envelope = Envelope(
-                    visitorId: Identifiers.makeULID(now: now),
-                    visitorExpiresAt: now + SkyraSavedState.retentionMilliseconds
-                )
-            }
-            var value = envelope!
-            if
-                !Identifiers.isValidVisitorID(value.visitorId) || value.visitorExpiresAt <= now ||
-                value.visitorExpiresAt > now + SkyraSavedState.retentionMilliseconds
-            {
-                value.visitorId = Identifiers.makeULID(now: now)
-                value.visitorExpiresAt = now + SkyraSavedState.retentionMilliseconds
-            }
-            value.surveys = value.surveys.filter { Self.valid($0.value, slug: $0.key, now: now) }
-            try body(&value)
-            result = value
-            return try JSONEncoder().encode(value)
-        }
-        return result!
-    }
-
-    /// transaction and history call this before trusting a record's identity, expiry, and active progress.
-    private static func valid(_ record: NativeRecord, slug: String, now: Int64) -> Bool {
-        guard
-            record.expiresAt > now, record.updatedAt >= 0, record.updatedAt <= now,
-            record.expiresAt - record.updatedAt == SkyraSavedState.retentionMilliseconds,
-            Identifiers.isValidVisitorID(record.visitorId),
-            Identifiers.isValidSessionID(record.sessionId),
-            Identifiers.isValidSurveySlug(slug)
-        else {
-            return false
-        }
-
-        if let active = record.active {
-            return record.status == .capture && active.skyraState.state == .capture &&
-                active.slug ==
-                slug &&
-                active.visitorId == record.visitorId && active.sessionId == record.sessionId &&
-                active.updatedAt == record.updatedAt && active.expiresAt == record.expiresAt &&
-                (try? active.validate(now: now)) != nil
-        }
-        return record.status != .capture
-    }
-
-    /// Presentation calls this after eligibility succeeds. Return visitor ID, session ID, and optional
-    /// saved progress; resuming keeps the original identity while a fresh request creates a new session.
-    /// Legacy UUID sessions remain recoverable; rewriting them would split an existing interaction.
-    func prepare(slug: String, resume: Bool) throws -> (String, String, SkyraSavedState?) {
-        let envelope = try transaction { _ in }
-        if resume, let state = envelope.surveys[slug]?.active {
-            return (
-                state.visitorId,
-                state.sessionId,
-                state
-            )
-        }
-        return (envelope.visitorId, Identifiers.makeULID(now: clock()), nil)
-    }
-
-    /// Presentation reads prior history here before evaluating policy. This does not allocate identity,
-    /// prune records, or renew expiry; a failed terminal write keeps subsequent requests closed.
-    func history(slug: String) throws -> NativeRecord? {
-        failureLock.lock()
-        let failed = failedTerminals.contains(slug)
-        failureLock.unlock()
-        if failed {
-            throw SkyraError.storageFailure
-        }
-
-        let now = clock()
-        var result: NativeRecord?
+        var result: SkyraState?
         do {
             _ = try storage.update(key: key) { data in
-                if
-                    let data, let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
-                    envelope.version == 1, let record = envelope.surveys[slug], Self.valid(
-                        record,
-                        slug: slug,
-                        now: now
-                    )
-                {
-                    result = record
-                }
-                return data
+                var state = data.flatMap { Self.decode($0, now: now) }
+                    ?? SkyraState(visitorId: Identifiers.makeULID(now: now))
+                state.surveys = self.pruned(state.surveys, now: now)
+                try body(&state, now)
+                state.surveys = Self.limited(state.surveys)
+                result = state
+                return try Self.encode(state)
             }
+        } catch let error as SkyraError {
+            throw error
         } catch {
             throw SkyraError.storageFailure
+        }
+        // A backend that never called the transform has stored nothing.
+        guard let result else {
+            throw SkyraError.storageFailure
+        }
+
+        return result
+    }
+
+    /// The latest time an entry or a visitor ID may carry when the clock reads `now`.
+    private static func latestTime(_ now: Int64) -> Int64 {
+        let (latest, overflow) = now.addingReportingOverflow(futureToleranceMilliseconds)
+        return overflow ? .max : latest
+    }
+
+    /// The entries that are still valid at `now`, each with its progress checked again.
+    /// Stored and incoming entries both go through here, so stored data that breaks a rule heals.
+    private func pruned(
+        _ surveys: [String: SkyraState.Survey],
+        now: Int64
+    ) -> [String: SkyraState.Survey] {
+        let latest = Self.latestTime(now)
+        var result: [String: SkyraState.Survey] = [:]
+        for (slug, survey) in surveys where keeps(survey, slug: slug, now: now, latest: latest) {
+            var survey = survey
+            // Progress belongs to a survey the visitor is part-way through, and to no other.
+            survey.progress = survey.state == .capture
+                ? survey.progress.flatMap { SkyraState.checkedProgress($0, latest: latest) }
+                : nil
+            result[slug] = survey
         }
         return result
     }
 
-    /// SurveyController calls this for a validated state event. Persist the snapshot and retain active
-    /// progress only for Capture; completed/rejected history has nothing to resume.
-    func save(_ state: SkyraSavedState) throws {
-        try state.validate(now: clock())
-        try transaction { envelope in
-            envelope.surveys[state.slug] = NativeRecord(
-                visitorId: state.visitorId,
-                sessionId: state.sessionId,
-                status: state.skyraState.state,
-                updatedAt: state.updatedAt,
-                expiresAt: state.expiresAt,
-                active: state.skyraState.state == .capture ? state : nil
-            )
-        }
+    /// An entry is kept while it names a survey of this organisation, has a sane time and session,
+    /// changed less than 400 days ago, and is not dated after `latest`.
+    private func keeps(
+        _ survey: SkyraState.Survey,
+        slug: String,
+        now: Int64,
+        latest: Int64
+    ) -> Bool {
+        Identifiers.isValidSurveySlug(slug)
+            && slug.hasPrefix(organization + "/")
+            && survey.lastSync >= 0
+            && survey.lastSync > now - Self.retentionMilliseconds
+            && survey.lastSync <= latest
+            && survey.sessionId.map(Identifiers.isValidSessionID) ?? true
     }
 
-    /// SurveyController calls this on completion or rejection to record the outcome and clear progress.
-    /// Duplicate outcomes for the same session keep their original expiry instead of extending it.
-    func terminal(
-        slug: String,
-        visitor: String,
-        session: String,
-        status: SkyraSavedState.Status
-    ) throws {
-        let now = clock()
-        failureLock.lock()
-        failedTerminals.insert(slug)
-        failureLock.unlock()
-        try transaction { envelope in
-            let old = envelope.surveys[slug]
-            let retain = old?.sessionId == session && old?.status == status
-            envelope.surveys[slug] = NativeRecord(
-                visitorId: visitor,
-                sessionId: session,
-                status: status,
-                updatedAt: retain ? old!.updatedAt : now,
-                expiresAt: retain ? old!.expiresAt : now + SkyraSavedState.retentionMilliseconds,
-                active: nil
-            )
+    /// Cuts the entries down to what the store may hold: the entries that changed last, and of
+    /// their progress as much as fits, dropping the oldest progress first. The entry itself stays.
+    private static func limited(
+        _ surveys: [String: SkyraState.Survey]
+    ) -> [String: SkyraState.Survey] {
+        var bytes = surveys.values.reduce(0) { $0 + ($1.progress?.count ?? 0) }
+        guard surveys.count > maximumSurveys || bytes > maximumTotalProgressBytes else {
+            return surveys
         }
-        failureLock.lock()
-        failedTerminals.remove(slug)
-        failureLock.unlock()
+
+        // Oldest first. The slug settles equal times, so the same entries go every time.
+        var oldestFirst = surveys.sorted {
+            ($0.value.lastSync, $0.key) < ($1.value.lastSync, $1.key)
+        }
+        oldestFirst.removeFirst(max(0, oldestFirst.count - maximumSurveys))
+        bytes = oldestFirst.reduce(0) { $0 + ($1.value.progress?.count ?? 0) }
+        var result: [String: SkyraState.Survey] = [:]
+        for (slug, var survey) in oldestFirst {
+            if bytes > maximumTotalProgressBytes, let progress = survey.progress {
+                bytes -= progress.count
+                survey.progress = nil
+            }
+            result[slug] = survey
+        }
+        return result
     }
 }
