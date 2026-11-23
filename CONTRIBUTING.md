@@ -14,8 +14,8 @@ documentation aligned with the public API in `Sources/Skyra`.
 
 ## Checks
 
-The declared minimums are Swift 5.9, Swift 5 language mode, and Xcode 15.0.1 for iOS
-development. These requirements are not a claim that every change has been tested
+The declared minimums are Xcode 16.0 (Swift 6.0 toolchain) and Swift 5 language mode
+for iOS development. These requirements are not a claim that every change has been tested
 on every minimum version. Run from the repository root:
 
 ```sh
@@ -31,10 +31,9 @@ For native changes, run the relevant package and simulator tests with the select
 Xcode developer directory; commands are in the [README](README.md#development-checks).
 Add meaningful tests and update customer documentation for behavior changes.
 Automatic PR and main-branch CI checks formatting and the package contract, and builds
-and tests the package on macOS with the declared minimum Xcode 15.0.1 / Swift 5.9
-toolchain. Newer Xcode builds and simulator tests are manual-only through **Actions →
+and tests the package on macOS with the declared minimum, Xcode 16.0. Newer Xcode builds and simulator tests are manual-only through **Actions →
 Swift Package → Run workflow**. The manual matrix uses macOS 15 with Xcode 16.4 and
-26.3; it does not establish iOS 15 runtime coverage. Public requirements remain unchanged. Do not imply readiness or
+26.3; it does not establish iOS 15 runtime coverage. Do not imply readiness or
 validation counts without results from the validation owner for the relevant revision.
 
 ## Review

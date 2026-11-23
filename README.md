@@ -17,7 +17,7 @@ on the trait `channel` equal to `app`. The toolkit sends that trait with every r
 
 ## Requirements
 
-- iOS 15+, Swift 5.9+, Xcode 15.0.1+; Swift 5 language mode.
+- iOS 15+, Xcode 16.0+ (Swift 6.0 toolchain); Swift 5 language mode.
 - Product and module: **Skyra**.
 - No third-party package dependencies. The only bundled resource is the
   privacy manifest.
@@ -157,8 +157,8 @@ xcodebuild -scheme Skyra -destination 'platform=iOS Simulator,name=iPhone 17 Pro
 ```
 
 Automatic PR and main-branch CI runs formatting and package-contract checks on Linux,
-and builds and tests the package on macOS with the declared minimum Xcode 15.0.1 /
-Swift 5.9 toolchain. Newer Xcode builds and simulator tests are manual: use
+and builds and tests the package on macOS with the declared minimum, Xcode 16.0.
+Newer Xcode builds and simulator tests are manual: use
 **Actions → Swift Package → Run workflow** and select the branch to validate. The
 manual matrix uses macOS 15 with Xcode 16.4 and 26.3, so a green PR does not mean
 simulator tests ran, and an iOS 15 runtime is not exercised.
