@@ -83,18 +83,18 @@ Show the survey with the Skyra widget in a `WKWebView`, with `<html lang>` set t
 
 ```swift
 let html = """
-<!doctype html>
-<html lang="\(survey.language)">
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>\(try skyra.widgetConfig())</script>
-<script src="https://survey.skyra.no/skyra-survey.js"></script>
-</head>
-<body>
-<skyra-survey slug="\(survey.slug)"></skyra-survey>
-</body>
-</html>
-"""
+    <!doctype html>
+    <html lang="\(survey.language)">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script>\(try skyra.widgetConfig())</script>
+        <script src="https://survey.skyra.no/skyra-survey.js"></script>
+      </head>
+      <body>
+        <skyra-survey slug="\(survey.slug)"></skyra-survey>
+      </body>
+    </html>
+    """
 
 let configuration = WKWebViewConfiguration()
 configuration.userContentController.add(handler, name: Skyra.messageHandlerName)
