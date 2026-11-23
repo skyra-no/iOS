@@ -1,4 +1,4 @@
-# Automatic Linux checks and a build on the minimum toolchain; opt-in Xcode builds and simulator tests.
+# Automatic Linux checks and a build on the minimum Xcode; opt-in Xcode builds and simulator tests.
 name: Swift Package
 
 on:
@@ -18,15 +18,13 @@ concurrency:
 jobs:
   formatting:
     name: Swift formatting
-    runs-on: ubuntu-22.04
-    container: swift:5.9-jammy
+    # The image already has Swift, curl, unzip and jq, so nothing is installed.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install check utilities
-        run: apt-get update -qq && apt-get install -y --no-install-recommends curl unzip jq
       - name: Check Swift formatting
         run: bash Scripts/format-swift.sh --lint
       - name: Validate package contract
