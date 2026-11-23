@@ -33,11 +33,11 @@ jobs:
         run: bash Scripts/check-package.sh
 
   minimum-toolchain:
-    name: Build and test (Xcode 15.0.1, Swift 5.9)
-    runs-on: macos-14
+    name: Build and test (Xcode 16.0, the declared minimum)
+    runs-on: macos-15
     timeout-minutes: 15
     env:
-      DEVELOPER_DIR: /Applications/Xcode_15.0.1.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:

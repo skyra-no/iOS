@@ -6,7 +6,7 @@ survey is up to you. Step 6 shows one way, the Skyra widget in your own web view
 
 ## What you need
 
-- Xcode 15.0.1+, Swift 5.9+, and an app supporting iOS 15+.
+- Xcode 16.0+ and an app supporting iOS 15+.
 - If the SDK repository is private, access from your GitHub account in Xcode.
 - Your organisation's identifier in Skyra.
 - A published inline survey with no URL rules and an Include audience rule on the
