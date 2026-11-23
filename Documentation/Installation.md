@@ -8,12 +8,12 @@ widget in your own web view.
 
 - Xcode 16.0+ and an app supporting iOS 15+.
 - Access to the `skyra-no/iOS` repository from your GitHub account in Xcode. Ask
-  Skyra for it.
+  Skyra at support@skyra.no.
 - Your organisation's identifier in Skyra.
 - **Audience targeting** switched on by an organisation admin under
   **Settings → General → Early access · Organisation**.
 - `app-surveys` (retake and retrigger times in the app) and `widget-store` (the widget
-  reports to the app) switched on for your organisation. Ask Skyra.
+  reports to the app) switched on for your organisation. Ask Skyra at support@skyra.no.
 - A published inline survey with no URL rules and an Include audience rule on the
   trait `channel` equal to `app`. The SDK always sends `channel: app` and your website
   doesn't, so the survey shows in the app only.

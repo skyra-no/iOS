@@ -44,9 +44,10 @@ with each request. See [data and privacy](Documentation/Privacy.md).
 
 ## Support
 
-Report bugs and questions in [GitHub Issues](https://github.com/skyra-no/iOS/issues)
-with `Skyra.version`, the Xcode and iOS versions, steps to reproduce and the error.
-Remove personal data from logs. To work on the SDK, see [contributing](CONTRIBUTING.md).
+Skyra maintains this SDK and doesn't take pull requests. Report bugs and questions in
+[GitHub Issues](https://github.com/skyra-no/iOS/issues) or at support@skyra.no, with
+`Skyra.version`, the Xcode and iOS versions, steps to reproduce and the error. Remove
+personal data from logs.
 
 ## License
 
