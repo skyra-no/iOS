@@ -16,7 +16,6 @@ you get in a web view, using the page and handler the SDK gives you.
 
 From Skyra (ask at support@skyra.no):
 
-- access to the `skyra-no/iOS` repository from your GitHub account in Xcode;
 - your organisation's identifier;
 - the `app-surveys` and `widget-store` features switched on for your organisation.
   `app-surveys` keeps a finished survey away until its retake time has passed.
