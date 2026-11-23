@@ -1,32 +1,42 @@
 # Use Skyra surveys in an iOS app
 
-The SDK keeps the visitor's survey state on the device, asks Skyra which surveys to
-show, and stores what the visitor did with them. It has no UI. Surveys are shown by
-the Skyra widget in your own web view (step 4).
+## How it works
+
+**Skyra** decides which survey a visitor sees and when it may come back, and runs the
+survey itself: the questions, the answers and sending them to Skyra. The survey runs
+in a web view, the same way it does on a website.
+
+**The SDK** remembers what each visitor did with each survey, asks Skyra which
+survey to show, and stores what the survey reports from the web view.
+
+**You** add the SDK, ask for a survey when the screen changes, and show the survey
+you get in a web view, using the page and handler the SDK gives you.
 
 ## What you need
 
-- Xcode 16.0+ and an app supporting iOS 15+.
-- Access to the `skyra-no/iOS` repository from your GitHub account in Xcode. Ask
-  Skyra for it.
-- Your organisation's identifier in Skyra.
-- **Audience targeting** switched on by an organisation admin under
-  **Settings → General → Early access · Organisation**, so you can add the `channel` rule below.
-- These features switched on for your organisation by Skyra:
-  - `app-surveys`. Skyra then applies the survey's retake and retrigger times in the
-    app. Without it, a finished survey comes back on the next call.
-  - `widget-store`. The widget then hands its state to the app. Without it, the widget
-    keeps state in cookies: the app never learns what the visitor did, and progress is
-    lost when the web view closes.
-- A published inline survey with no URL rules and an Include audience rule on the
-  trait `channel` equal to `app`. The SDK sends that trait with every request and your
-  website doesn't, so the survey shows in the app only.
+From Skyra (ask at support@skyra.no):
 
-## 1. Install
+- access to the `skyra-no/iOS` repository from your GitHub account in Xcode;
+- your organisation's identifier;
+- the `app-surveys` and `widget-store` features switched on for your organisation.
+  `app-surveys` keeps a finished survey away until its retake time has passed.
+  `widget-store` lets the survey in the web view report back to the app.
+
+In the Skyra dashboard:
+
+- **Audience targeting** switched on by an organisation admin under
+  **Settings → General → Early access · Organisation**;
+- a published inline survey with no URL rules and the audience rule **Include if
+  `channel` equals `app`**. Only the app sends that trait, so the survey never shows
+  on your website.
+
+In your project: Xcode 16.0+ and an app supporting iOS 15+.
+
+## 1. Add the SDK
 
 1. In Xcode, choose **File → Add Package Dependencies…**.
 2. Enter `https://github.com/skyra-no/iOS`.
-3. Choose **Up to Next Minor Version** and enter `0.1.0`.
+3. Choose **Up to Next Minor Version** and enter `0.2.0`.
 4. Add the **Skyra** product to your app target.
 
 ## 2. Create one instance
@@ -42,33 +52,20 @@ let skyra = try Skyra(configuration: .init(
 ```
 
 Create it once, for example at app start, and keep it. It's safe to use from any
-thread. Creating it makes no request and stores nothing.
+thread.
 
 | Setting | Meaning |
 | --- | --- |
 | `organization` | Your organisation's identifier in Skyra. Required. |
-| `language` | The language your app shows its content in, such as `nb`, `en` or `en-GB`. The device's language is sent separately. |
-| `traits` | Traits that hold for the whole session, such as `plan`. At most 49. Names are trait slugs (letters, digits, `_` and `-`); values are up to 256 characters. `channel` is always `app`. |
-| `persistence` | `.persistent` (default) keeps the state in UserDefaults. `.ephemeral` keeps it in memory until the instance goes away. |
-| `decisionOrigin` | The decision service. Change it only for a test environment. |
+| `language` | The language your app shows its content in, such as `nb` or `en-GB`. |
+| `traits` | Traits that hold for the whole session, such as `plan`. |
+| `persistence` | `.persistent` (default) keeps what visitors did in UserDefaults; `.ephemeral` keeps it in memory. |
 
-An unusable setting throws `SkyraError.invalidConfiguration`.
+To keep it somewhere else, see [custom storage](Reference.md#custom-storage).
 
-To keep the state in another UserDefaults suite, pass a storage:
+## 3. Ask for a survey
 
-```swift
-let skyra = try Skyra(
-    configuration: .init(organization: "acme"),
-    storage: SkyraUserDefaultsStorage(defaults: UserDefaults(suiteName: "com.acme.skyra")!)
-)
-```
-
-`SkyraUserDefaultsStorage` is safe within one process. Don't share its suite between
-an app and an extension: they can overwrite each other's changes. You can also
-implement `SkyraStorage` yourself; its one method must read, transform and write a
-value atomically, and throw when it can't.
-
-## 3. Ask which surveys to show
+Call `getSurveys` when the screen or a trait changes:
 
 ```swift
 let surveys: [SkyraSurvey]
@@ -79,94 +76,84 @@ do {
     surveys = []
 }
 guard let survey = surveys.first else { return }   // nothing to show
-// survey.slug is "acme/feedback", survey.language is "nb"
 ```
 
-You get the surveys Skyra allows right now, in Skyra's order, with a survey the
-visitor is part-way through first. Show the first one. The SDK doesn't filter or
-reorder the list. Treat an error like an empty list: show nothing.
+Show the first survey; one the visitor has started always comes first. An empty list,
+or an error, means show nothing.
 
-Traits passed here describe this moment and are added to the configured traits,
-winning when both name the same trait. Screens are traits: a survey aimed at the
-checkout screen comes back when you pass `["screen": "checkout"]`.
-
-Call it when the screen or a trait changes, not in a loop. The request gives up after
-1.5 seconds and isn't retried, so a slow network means no survey this time.
+The traits you pass are added to the configured ones for this call. Screens are
+traits: a survey aimed at the checkout screen comes back when you pass
+`["screen": "checkout"]`. The request gives up after 1.5 seconds and isn't retried,
+so a slow network means no survey this time.
 
 ## 4. Show the survey in a web view
 
-The answer names the survey and its language, not its questions. The Skyra widget
-loads the survey, shows it and sends the answers, so you show it in your own
-`WKWebView`. Put `survey.language` in `<html lang>` so the widget shows the survey
-in the language Skyra chose:
+The survey runs inside the web view, so the app can't see what the visitor does
+there. The SDK gives you two things to connect them: a page that loads the survey,
+and a handler that receives what the survey reports and stores it.
 
 ```swift
 let html = """
-<!doctype html>
-<html lang="\(survey.language)">
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script>\(try skyra.widgetConfig())</script>
-<script src="https://survey.skyra.no/skyra-survey.js"></script>
-</head>
-<body>
-<skyra-survey slug="\(survey.slug)"></skyra-survey>
-</body>
-</html>
-"""
+    <!doctype html>
+    <html lang="\(survey.language)">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script>\(try skyra.widgetConfig())</script>
+        <script src="https://survey.skyra.no/skyra-survey.js"></script>
+      </head>
+      <body>
+        <skyra-survey slug="\(survey.slug)"></skyra-survey>
+      </body>
+    </html>
+    """
 
 let configuration = WKWebViewConfiguration()
-configuration.userContentController.add(handler, name: Skyra.messageHandlerName)
+configuration.userContentController.add(skyra.messageHandler, name: Skyra.messageHandlerName)
 let webView = WKWebView(frame: .zero, configuration: configuration)
 webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
 ```
 
-`handler` is your `WKScriptMessageHandler`, shown below. `widgetConfig()` gives the
-widget your organisation, the traits of your latest
-`getSurveys` call, and this visitor's stored state. The widget is then the same
-visitor as the app and keeps nothing in cookies.
+- `widgetConfig()` tells the survey your organisation, your traits, and where to
+  report: to the app instead of cookies.
+- `skyra.messageHandler` receives every report, for example "started", "on question
+  2" or "finished", and stores it. That's how the next `getSurveys` knows a survey
+  was finished. It ignores reports from frames embedded in your page.
+- `<html lang>` makes the survey use the language Skyra chose.
+- Use an `https` `baseURL`. The host doesn't have to exist; nothing is loaded from it.
+- When the web view goes away, call
+  `configuration.userContentController.removeScriptMessageHandler(forName: Skyra.messageHandlerName)`.
 
-The widget posts every change it saves to your handler. Pass each one to `sync`:
+Everything is stored as it happens, so there's nothing to do when the web view
+closes. A visitor who leaves halfway continues at the same question next time.
+
+### Closing the web view when the survey ends
+
+The survey doesn't close the web view itself. To hear when a survey changes, for
+example to close the web view when it's finished, implement `SkyraSurveyListener` and
+pass it to the handler. It's called after the change is stored:
 
 ```swift
-func userContentController(
-    _ controller: WKUserContentController,
-    didReceive message: WKScriptMessage
-) {
-    guard message.frameInfo.isMainFrame,
-          let state = try? SkyraState(widget: message.body) else { return }
-    _ = try? skyra.sync(state)
+final class SurveyViewController: UIViewController, SkyraSurveyListener {
+    func surveyDidChange(_ slug: String, to state: SkyraState.Status) {
+        if state == .completed || state == .rejected {
+            dismiss(animated: true)
+        }
+    }
 }
+
+// Where you set up the web view:
+configuration.userContentController.add(
+    skyra.messageHandler(listener: self),
+    name: Skyra.messageHandlerName
+)
 ```
 
-- Take messages from the main frame only, as above, so an embedded frame can't write
-  state.
-- Use an `https` `baseURL`. The host doesn't have to exist, since nothing is loaded
-  from it. The widget doesn't run on `file:`, `about:` or custom-scheme pages.
-- The content controller keeps its handler alive. Remove it with
-  `removeScriptMessageHandler(forName:)` when the web view goes away.
+The handler holds the listener weakly, so the view controller can be its own
+listener.
 
-Every change is stored as it arrives, so there's nothing to do when the web view
-closes. A visitor who leaves halfway continues at the same question next time you
-show the survey.
+## What the SDK remembers
 
-## 5. Read the state
-
-For debugging, or to see what Skyra will be told:
-
-```swift
-let state = try skyra.state()
-state.visitorId                          // a ULID
-state.surveys["acme/feedback"]?.state    // .selected, .capture, .completed or .rejected
-```
-
-The first call creates the visitor ID. It's kept until the storage is cleared; after
-that the visitor is treated as new.
-
-## Reference: state and sync
-
-Each survey entry holds a state, its time (`lastSync`, Unix milliseconds) and the
-survey session's ID. A survey in progress also holds the widget's progress.
+For each survey, the SDK keeps the visitor's last step:
 
 | State | Set when | Effect on the next `getSurveys` |
 | --- | --- | --- |
@@ -175,88 +162,39 @@ survey session's ID. A survey in progress also holds the widget's progress.
 | `Completed` | The visitor finished. | Left out until the survey's retake time has passed. |
 | `Rejected` | The visitor closed it unfinished. | Left out until the survey's retrigger time has passed. |
 
-Skyra applies these effects, not the SDK.
-
-`sync` is the only call that writes state. Your handler passes what the widget sends,
-and `sync` merges it with what is stored:
-
-- The visitor ID that was created first is kept. One dated in the future throws
-  `SkyraError.invalidState`.
-- For each survey, the entry with the later `lastSync` wins. On equal times the state
-  further along wins: `Selected`, `Capture`, `Rejected`, `Completed`.
-- Entries for other organisations, entries more than 400 days old and entries dated
-  more than five minutes ahead are ignored, as are malformed ones.
-- Progress is kept only while a survey is `Capture`, at most 64 KB per survey and
-  1 MB in total.
-- At most 200 surveys are kept. Over a limit, the oldest goes first.
-
-Syncing the same state twice changes nothing. A survey entry is dropped 400 days
-after it last changed.
-
-`SkyraState(json:)`, `SkyraState(jsonObject:)` and `json()` use this shape. A survey
-in progress also carries a `progress` object:
-
-```json
-{
-  "visitorId": "01JD8ZQ6K3Y7M2N4P5R6S7T8V9",
-  "surveys": {
-    "acme/feedback": { "state": "Completed", "lastSync": 1794832273590, "sessionId": "01JD8ZR1M4XQ2B7C9D0E1F2G3H" }
-  }
-}
-```
+Retake and retrigger times are set on the survey in Skyra, so you can change them
+without an app update. A survey's entry is dropped 400 days after it last changed.
+Merge rules and the stored format are in the [reference](Reference.md).
 
 ## Errors
 
 | Error | Meaning |
 | --- | --- |
-| `SkyraError.invalidConfiguration` | The organisation, service address, language or configured traits are not usable. |
-| `SkyraError.invalidTraits` | A trait passed to `getSurveys` has a name that is not a slug or a value that is too long, or there are too many. |
-| `SkyraError.invalidState` | The state passed to `sync` is not readable or has no valid visitor ID. |
+| `SkyraError.invalidConfiguration` | A setting is not usable. Traits: at most 49, names of letters, digits, `_` and `-`, values up to 256 characters. |
+| `SkyraError.invalidTraits` | A trait passed to `getSurveys` breaks the same rules, or configured and passed traits together exceed 49. |
+| `SkyraError.invalidState` | What was stored or passed in is not readable or has no valid visitor ID. |
 | `SkyraError.storageFailure` | The state could not be read or written. |
-| `SkyraError.requestTooLarge` | The decision request would exceed the service's 64 KB limit. Send fewer or shorter traits. |
-| `SkyraError.decisionHTTPStatus(code)` | The decision service answered with this status. 404 means it does not know the organisation. |
-| `SkyraError.invalidDecisionResponse` | The decision service's answer could not be understood. |
+| `SkyraError.requestTooLarge` | The request would exceed the service's 64 KB limit. Send fewer or shorter traits. |
+| `SkyraError.decisionHTTPStatus(code)` | Skyra answered with this status. 404 means it doesn't know the organisation. |
+| `SkyraError.invalidDecisionResponse` | Skyra's answer could not be understood. |
 
 `getSurveys` can also throw `URLError`, for example on a timeout, and
-`CancellationError` when its task is cancelled. Treat every error from `getSurveys`
-as "show nothing".
+`CancellationError` when its task is cancelled.
 
-## Test environments and localhost
+## Troubleshooting
 
-The SDK uses `https://ingest.skyra.no` and needs no address configuration. If Skyra
-gave you a test environment, pass its origin:
-
-```swift
-let configuration = SkyraConfiguration(
-    organization: "acme",
-    decisionOrigin: URL(string: "http://localhost:3212")!
-)
-```
-
-Use the origin only, without a path. HTTP is accepted only for `localhost`,
-`127.0.0.1` and `::1`.
-
-For HTTP on localhost, add **App Transport Security Settings → Allow Local Networking
-= YES** to the app target's **Info** tab (`NSAppTransportSecurity` /
-`NSAllowsLocalNetworking`), keeping any existing entries. Use the Simulator: on a
-physical iPhone, localhost is the phone itself.
-
-## If no survey comes back
-
-- Check that the survey is a published inline survey with no URL rules and an Include
-  rule `channel` equal to `app`, and that the traits you pass match its other audience
-  rules, including the screen.
-- Check that Audience targeting is on, so the `channel` rule is saved.
-- Print `try skyra.state()`. A `Completed` or `Rejected` survey is left out until its
+**No survey comes back.**
+- Check the survey: published, inline, no URL rules, Include if `channel` equals
+  `app`, and the traits you pass match its other audience rules, including the screen.
+- Check that Audience targeting is on, or the `channel` rule isn't saved.
+- `print(try skyra.state())`. A `Completed` or `Rejected` survey is left out until its
   retake or retrigger time has passed. Use `.ephemeral` persistence while testing to
   start empty on each launch.
-- `decisionHTTPStatus(404)` means the organisation identifier is wrong.
-- A `URLError` timeout means the service didn't answer within 1.5 seconds.
+- `decisionHTTPStatus(404)`: the organisation identifier is wrong.
+- `URLError` timeout: Skyra didn't answer within 1.5 seconds.
 
-## If a survey keeps coming back
+**A finished survey comes back straight away.** `app-surveys` isn't switched on.
 
-- A finished survey comes back on the next call: Skyra hasn't switched on
-  `app-surveys` for your organisation.
-- Progress is lost, or `skyra.state()` stays empty after the visitor answers: Skyra
-  hasn't switched on `widget-store`, or your handler isn't registered under
-  `Skyra.messageHandlerName`.
+**Progress is lost, or `skyra.state()` stays empty after answering.** `widget-store`
+isn't switched on, or `skyra.messageHandler` isn't registered under
+`Skyra.messageHandlerName`.

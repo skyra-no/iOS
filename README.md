@@ -14,7 +14,7 @@ Surveys are shown by the Skyra widget in your own web view. Beta, iOS only.
 ## Install
 
 Add `https://github.com/skyra-no/iOS` in Xcode with **Up to Next Minor Version** from
-`0.1.0`, and add the **Skyra** product to your app target. Until 1.0, a minor version
+`0.2.0`, and add the **Skyra** product to your app target. Until 1.0, a minor version
 can change the API and a patch version can't. See the [changelog](CHANGELOG.md).
 
 ## Quick start
@@ -28,13 +28,12 @@ let skyra = try Skyra(configuration: .init(organization: "acme", language: "nb")
 // Ask when the screen or a trait changes.
 let surveys = try await skyra.getSurveys(traits: ["screen": "checkout"])
 
-// Show surveys.first with <skyra-survey> in your web view, configured with
-// skyra.widgetConfig(). In its WKScriptMessageHandler, store what the widget reports:
-try skyra.sync(SkyraState(widget: message.body))
+// Show surveys.first in a web view: a page with skyra.widgetConfig() and
+// <skyra-survey>, and skyra.messageHandler to store what the survey reports.
 ```
 
-The [integration guide](Documentation/Installation.md) covers each step, the web view,
-state and merging, and errors.
+The [integration guide](Documentation/Installation.md) explains who does what, each
+step, the web view and errors. Merge rules and the JSON shape are in the [reference](Documentation/Reference.md).
 
 ## Privacy
 
@@ -44,9 +43,10 @@ with each request. See [data and privacy](Documentation/Privacy.md).
 
 ## Support
 
-Report bugs and questions in [GitHub Issues](https://github.com/skyra-no/iOS/issues)
-with `Skyra.version`, the Xcode and iOS versions, steps to reproduce and the error.
-Remove personal data from logs. To work on the SDK, see [contributing](CONTRIBUTING.md).
+Skyra maintains this SDK and doesn't take pull requests. Report bugs and questions in
+[GitHub Issues](https://github.com/skyra-no/iOS/issues) or at support@skyra.no, with
+`Skyra.version`, the Xcode and iOS versions, steps to reproduce and the error. Remove
+personal data from logs.
 
 ## License
 
