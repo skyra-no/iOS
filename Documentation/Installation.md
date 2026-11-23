@@ -102,8 +102,21 @@ let webView = WKWebView(frame: .zero, configuration: configuration)
 webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
 ```
 
-`widgetConfig()` gives the widget your organisation, your traits and the visitor's
-stored state, so the widget and the app share one visitor ID. `handler` is your
+`widgetConfig()` returns a short script that configures the widget before it loads:
+
+```js
+window.SKYRA_CONFIG = {
+  org: "acme",
+  traits: { channel: "app", plan: "premium", screen: "checkout" },
+  store: {
+    state:    { read, write, clear },   // the visitor's stored state
+    progress: { read, write, clear }    // where the visitor is in a survey
+  }
+}
+```
+
+The `store` reads the visitor's state from the app and sends every change back to your
+handler, so the widget and the app share one visitor ID and nothing is kept in cookies. `handler` is your
 `WKScriptMessageHandler`. It receives every change the widget saves; pass each one to
 `sync`:
 
