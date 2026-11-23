@@ -6,8 +6,8 @@ Details behind the [guide](Installation.md). You don't need them to integrate th
 
 `sync` is the only call that writes state.
 
-- The visitor ID that was created first is kept. One dated in the future throws
-  `SkyraError.invalidState`.
+- The visitor ID that was created first is kept. Visitor IDs are ULIDs, which include
+  their creation time; one dated in the future throws `SkyraError.invalidState`.
 - For each survey, the entry with the later `lastSync` (Unix milliseconds) wins. On
   equal times the state further along wins: `Selected`, `Capture`, `Rejected`,
   `Completed`.
@@ -44,5 +44,5 @@ let skyra = try Skyra(
 
 `SkyraUserDefaultsStorage` is safe within one process. A suite shared between an app
 and an extension isn't: they can overwrite each other's changes. Your own
-`SkyraStorage` has one method, which must read, transform and write the value
+`SkyraStorage` implements `update(key:_:)`, which must read, transform and write the value
 atomically and throw when it can't.
