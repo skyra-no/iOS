@@ -35,6 +35,11 @@ in progress also carries a `progress` object.
 
 ## Custom storage
 
+Most apps don't need this. By default the SDK keeps its state in the app's standard
+UserDefaults. Use your own storage if you want Skyra's data apart from the app's
+settings, for example to clear it on logout without touching anything else, or to
+keep it encrypted or in a file.
+
 ```swift
 let skyra = try Skyra(
     configuration: .init(organization: "acme"),
@@ -42,7 +47,8 @@ let skyra = try Skyra(
 )
 ```
 
-`SkyraUserDefaultsStorage` is safe within one process. A suite shared between an app
-and an extension isn't: they can overwrite each other's changes. Your own
-`SkyraStorage` implements `update(key:_:)`, which must read, transform and write the value
-atomically and throw when it can't.
+Don't use a UserDefaults suite shared by the app and an extension, such as a widget:
+if both write at the same time, one can overwrite the other's changes.
+
+Your own `SkyraStorage` implements `update(key:_:)`. It must read, change and write
+the value in one go, so nothing else writes in between, and throw if it fails.
