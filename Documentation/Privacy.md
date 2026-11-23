@@ -80,7 +80,7 @@ The decision request also carries traits, locale, time zone and device class. Sk
 uses them to decide which surveys to show. A trait that identifies a person, such as
 an account ID, links the visitor ID to that person for your app, and your own
 disclosures must say so. They must also account for your survey questions, the other
-traits you supply, and how you use responses. The one-year expiry on
+traits you supply, and how you use responses. The 400-day expiry on
 the device says nothing about backend retention.
 
 Source references: `Storage.swift`, `SkyraState.swift`, `DecisionService.swift`,
