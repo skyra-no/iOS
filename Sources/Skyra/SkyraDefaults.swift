@@ -10,5 +10,5 @@ public enum SkyraDefaults {
     static let traits = ["channel": "app"]
 
     /// The released version, as tagged. Reported in the decision request's User-Agent and as `Skyra.version`.
-    static let sdkVersion = "0.1.0"
+    static let sdkVersion = "0.2.0"
 }
