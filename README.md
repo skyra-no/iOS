@@ -33,8 +33,8 @@ let surveys = try await skyra.getSurveys(traits: ["screen": "checkout"])
 try skyra.sync(SkyraState(widget: message.body))
 ```
 
-The [integration guide](Documentation/Installation.md) covers each step, the web view,
-state and merging, and errors.
+The [integration guide](Documentation/Installation.md) covers each step, the web view
+and errors. Merge rules and the JSON shape are in the [reference](Documentation/Reference.md).
 
 ## Privacy
 
