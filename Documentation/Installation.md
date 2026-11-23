@@ -1,399 +1,290 @@
-# Add Skyra surveys to an iOS app
+# Use Skyra in an iOS app
 
-Skyra shows a hosted survey in a floating popup over an existing screen. The rest
-of the app stays interactive. Install Skyra at the window root, then choose
-screen-scoped presentation or explicitly triggered following presentation. Both
-use one request-scoped survey decision before eligibility and presentation priority
-are resolved.
+The Skyra package stores a visitor's survey state, asks Skyra which surveys to show in
+the app, and merges in what the visitor did with them. It shows no UI: how you show a
+survey is up to you. Step 6 shows one way, the Skyra widget in your own web view.
 
 ## What you need
 
 - Xcode 15.0.1+, Swift 5.9+, and an app supporting iOS 15+.
 - If the SDK repository is private, access from your GitHub account in Xcode.
-- The **iOS surveys** beta enabled for your organisation. In the survey editor,
-  select **iOS**, labelled **Beta · iOS apps**.
-- A published iOS survey with questions. An exact slug such as
-  `organisation/feedback` is optional when using organization-based selection.
+- Your organisation's identifier in Skyra.
+- A published inline survey with no URL rules and an Include audience rule on the
+  trait `channel` equal to `app`. The SDK sends that trait with every request and your
+  website does not, so the survey shows in the app only.
+- To show surveys with the Skyra widget in a web view (step 6), as in the example: the
+  `widget-store` feature switched on for your
+  organisation by Skyra. Without that feature the widget keeps state in cookies, so the
+  app never learns what the visitor did: a finished survey comes back, and progress is
+  lost when the web view closes.
+- The `app-surveys` feature switched on for your organisation by Skyra. It lets you set
+  a retake and retrigger time on app surveys, and Skyra applies them. Without it, a
+  finished survey comes back on the next call.
 
-For the first test, set capture to **100%** in Skyra. Otherwise a request may
-correctly remain hidden. This is an unreleased beta; confirm repository availability
-and any required package access with Skyra. Hosted iOS-beta enablement and a published
-survey are separate service requirements.
+This is a beta; confirm
+repository availability and any required package access with Skyra.
 
 ## 1. Install the package
 
 1. In Xcode, choose **File → Add Package Dependencies…**.
 2. Enter the package URL: `https://github.com/skyra-no/iOS`.
-3. Choose **Branch** and enter `main`, or choose **Revision** and enter the exact commit ID supplied by Skyra.
+3. Choose **Up to Next Minor Version** and enter `0.1.0`.
 4. Add the **Skyra** product to your app target.
-5. Add `import Skyra` in your integration files, then build the app.
+5. Add `import Skyra` where you use it, then build the app.
 
-Choose the SwiftUI or UIKit integration below. You do not need both for a screen.
-
-## 2. SwiftUI: install at the root
-
-Add `.skyra(configuration: .init(organization: "organisation"))` to your existing root view inside `WindowGroup`, above tabs and
-navigation. Keep your existing environment objects and scene configuration. Do
-not add another app declaration; adapt your existing one:
+## 2. Create one instance
 
 ```swift
 import Skyra
-import SwiftUI
 
-@main
-struct YourApp: App {
-    var body: some Scene {
-        WindowGroup {
-            AppTabView()
-                .skyra(configuration: .init(organization: "organisation"))
-        }
-    }
-}
+let skyra = try Skyra(configuration: .init(
+    organization: "acme",
+    language: "nb",
+    traits: ["plan": "premium"]
+))
 ```
 
-Replace `AppTabView` with your app's existing root view. Skyra retains one instance
-for that window, installs its presenter, and makes it available to descendant
-screens. Intermediate views need no Skyra properties or arguments.
+Create it once, for example at app start, and keep it. It is safe to use from any
+thread. Creating it makes no request and stores nothing.
 
-## 3. SwiftUI: attach a survey to a screen
+| Setting | Meaning |
+| --- | --- |
+| `organization` | Your organisation's identifier in Skyra. Required. |
+| `language` | The language your app shows its content in, such as `nb`, `en` or `en-GB`. The device's own language setting is sent separately. |
+| `traits` | Traits that hold for the whole app session, such as `plan`. At most 49. Names are trait slugs as in Skyra (letters, digits, `_` and `-`), and values are up to 256 characters. `channel` is always `app`. |
+| `persistence` | `.persistent` (default) keeps the state in UserDefaults. `.ephemeral` keeps it in memory until the instance goes away. |
+| `decisionOrigin` | The decision service. Change it only for a test environment. |
 
-On the existing screen's content, add `.skyraSurvey` with an exact slug, or omit
-the slug to select for the configured organization:
+`Skyra(configuration:)` throws `SkyraError.invalidConfiguration` when a setting is
+not usable.
 
-```swift
-import Skyra
-import SwiftUI
-
-struct CheckoutView: View {
-    var body: some View {
-        Form {
-            Text("Your existing checkout content")
-        }
-        .skyraSurvey() // or .skyraSurvey("organisation/feedback")
-    }
-}
-```
-
-Keep your real checkout content in place of the example form. Entering the screen
-requests a survey. An explicit slug is supplied to the configured decision; an
-omitted slug lets the decision select. Leaving cancels the request or interrupts its
-unfinished popup. Skyra resolves the decision, eligibility, and display delay; do not
-add a timer or survey-launch button. `.skyraSurvey("organisation/feedback")` keeps
-the explicit-slug behavior.
-
-### Optional results and errors
-
-The basic integration requires no callbacks. Add them when the app needs outcomes
-or diagnostics:
+To keep the state somewhere other than standard UserDefaults, pass a storage:
 
 ```swift
-checkoutContent
-    .skyraSurvey(
-        "organisation/feedback",
-        onOutcome: { result in print("Skyra: \(result)") },
-        onError: { error in print("Skyra request failed: \(error)") }
-    )
-```
-
-To handle invalid startup configuration, use `.skyra(onError: { error in ... })`
-at the root. Initialization failure leaves your app visible and usable. Integration
-errors are also logged in debug builds. Configuration and the root callback are
-captured for that root's lifetime; install a new root to change them.
-
-## Explicit following presentation
-
-Use this opt-in mode when an app event or user action should request a survey that
-is not owned by the view that triggered it. Keep `.skyra(configuration:)` at the window root, then
-read its installation from the environment and trigger it explicitly:
-
-```swift
-import Skyra
-import SwiftUI
-
-struct FeedbackButton: View {
-    @Environment(\.skyraInstallation) private var skyra
-
-    var body: some View {
-        Button("Give feedback") {
-            skyra?.presentSurvey(
-                slug: nil, // omit or pass nil to select; supply a slug for an exact survey
-                onOutcome: { result in print("Skyra: \(result)") },
-                onError: { error in print("Skyra request failed: \(error)") }
-            )
-        }
-    }
-}
-```
-
-`presentSurvey` returns a `SkyraSurveyRequest` immediately; it does not throw or
-wait for presentation. Preparation failures go to `onError` (and are logged in debug
-builds). Retain the handle only if you need to call `cancel()`; dropping it does not
-cancel the request. Cancellation interrupts without rejection, including before
-display, and reports `.interrupted` through `onOutcome`. In contrast,
-`skyraInstallation.dismissSurvey()` deliberately rejects a displayed unfinished
-survey. Confirmed completion takes precedence over either action.
-
-UIKit following presentation requires a new root-host step. Wrap your existing root
-before installing Skyra, then use the returned installation. Screen-only UIKit
-integrations do not need this wrapper.
-
-```swift
-import Skyra
-import UIKit
-
-final class FeedbackViewController: UIViewController {
-    var skyra: SkyraInstallation!
-
-    @IBAction func giveFeedback(_ sender: UIButton) {
-        skyra.presentSurvey(
-            slug: "organisation/feedback",
-            onOutcome: { result in print("Skyra: \(result)") },
-            onError: { error in print("Skyra request failed: \(error)") }
-        )
-    }
-}
-
-window.windowScene = windowScene
-let existingRoot = window.rootViewController!
-window.rootViewController = SkyraRootViewController(content: existingRoot)
-let installation = Skyra.install(
-    in: window,
-    configuration: .init(organization: "organisation")
+let shared = UserDefaults(suiteName: "group.com.acme.app")!
+let skyra = try Skyra(
+    configuration: .init(organization: "acme"),
+    storage: SkyraUserDefaultsStorage(defaults: shared)
 )
-feedbackViewController.skyra = installation
-window.makeKeyAndVisible()
 ```
 
-Keep `existingRoot` as your navigation/tab root; `window.rootViewController` is now
-the Skyra wrapper and should not be cast back to the old controller type. Following
-presentation belongs to the installation, not the triggering controller, and
-continues across push/pop and tab changes under that stable root. App presentations
-may cover it naturally; Skyra does not classify arbitrary covers or add a route
-hierarchy API. Display delay continues while covered, pauses while the owning scene is
-inactive, and resumes with remaining time when active. Following does not auto-open
-after an app restart. Root/window destruction or replacement and scene disconnection
-interrupt the request; it does not transfer or reopen elsewhere. Supported saved
-progress can be restored by a later explicit trigger; typed text is not natively
-restored and may remain live while covered. Custom overlays outside the installed
-root and auxiliary windows are not detected or automatically covered/followed.
+You can also implement `SkyraStorage` yourself. Its one method must read, transform
+and write a value atomically, and must throw when it cannot. `SkyraUserDefaultsStorage`
+does this within one process: an app and an extension sharing a suite can overwrite
+each other's changes.
 
-Ordinary competing requests share one SDK request slot and are not queued.
-A screen request may prepare alongside a following survey as described below.
-Other competing requests
-and report `alreadyPresenting` (through the error callback for following requests,
-or by throwing for direct async calls). Availability and hosted-page failures can
-still end a request. An omitted slug is resolved through the configured survey
-decision; it does not infer a screen or route. An explicit slug bypasses list
-selection but still goes through the configured decision and native eligibility.
+## 3. Ask which surveys to show
 
-### Screen priority while following is visible
+```swift
+do {
+    let surveys = try await skyra.getSurveys(traits: ["screen": "checkout"])
+    for survey in surveys {
+        // survey.slug, survey.language
+    }
+} catch {
+    // Show nothing.
+}
+```
 
-Following presentation and screen-scoped presentation use distinct ownership rules.
-An ordinary app cover does not itself pause, dismiss, or reclassify a following
-popup. A screen request can take priority only after its request has resolved to a
-survey that is ready to display. If that screen request is loading, delayed,
-unavailable, rejected by capture/cooldown, or otherwise does not reach display, the
-existing following popup remains visible. This is not a general view-hierarchy or
-sheet detector.
+The call returns the surveys Skyra allows in the app right now, as Skyra gives them.
+Skyra decides from the stored state, so a finished or closed survey comes back only
+after the survey's own retake or retrigger time. An empty list means there is nothing
+to show. Your app chooses where and when each survey shows.
 
-When a screen-owned survey is displayed over a following survey, the following
-presentation stays hidden for that screen visit after the screen survey completes or
-is deliberately closed. Leaving that screen visit resumes the same following survey
-and its existing hosted view/session/progress; it does not reload it. If the screen
-request resolves to the same survey slug as the existing presentation, the SDK
-continues that survey rather than starting it again with a new session. Scene
-inactivity pauses following surveys and interrupts a displayed screen-owned survey.
+Traits passed here describe this moment. They are added to the configured traits and
+win when both name the same trait. Screens are traits, so a survey aimed at the
+checkout screen is returned when you pass `["screen": "checkout"]` and the survey's
+audience rules ask for it.
 
-### Unified survey decision
+Call it when the screen or a trait changes. The request gives up after 1.5 seconds
+and is never retried, so a slow network means no survey this time.
 
-The default decision selects the first response-order `App` candidate when the
-request has no explicit slug, then loads delivery policy and applies native
-availability, capture, completion/rejection history, and initial-delay rules. If that
-candidate is unavailable or ineligible, it does not scan later candidates, queue, or
-retry automatically. `SkyraConfiguration.surveyDecision` replaces this
-whole business decision, including selection and qualification. Its request-scoped
-context exposes `organization`, `requestedSlug`, and `defaultDecision()`. Calling
-`defaultDecision()` reuses the SDK's default implementation; repeated or concurrent
-calls in the same context share one memoized result. The context does not expose
-native history or identity.
+The answer names each survey by its slug and the language Skyra chose for it. It
+does not contain the questions. The widget in step 6 loads the survey, runs its session
+and sends the answers.
 
-For example, keep the SDK's built-in behavior while adopting the unified closure API:
+## 4. Store what the visitor did
+
+Skip this step if the widget shows your surveys: step 6 stores every change for you.
+
+`sync` is the one call that writes state. If you render a survey yourself, store each
+step when it happens:
+
+```swift
+let visitor = try skyra.state().visitorId
+let now = Int64(Date().timeIntervalSince1970 * 1000)
+
+try skyra.sync(SkyraState(visitorId: visitor, surveys: [
+    survey.slug: .init(state: .completed, lastSync: now, sessionId: sessionId),
+]))
+```
+
+| State | When to store it | What Skyra does next |
+| --- | --- | --- |
+| `.selected` | You showed the survey. | Keeps returning the survey while it is allowed. |
+| `.capture` | The visitor started answering. | Keeps returning the survey while it is allowed. |
+| `.completed` | The visitor finished. | Leaves the survey out until its retake time has passed. |
+| `.rejected` | The visitor closed it unfinished. | Leaves the survey out until its retrigger time has passed. |
+
+If `.completed` is never stored, the survey keeps coming back.
+
+`lastSync` is the Unix time of the state in milliseconds. `sessionId` is the
+survey session's ID, a ULID. An entry
+with an unusable session ID, a slug of another organisation, or a time more than a
+year old is ignored.
+
+`sync` merges, so you pass only the entries that changed. The entry with the later
+`lastSync` replaces the stored one. That includes `.rejected` after `.completed`, so
+do not store a close for a survey the visitor already finished.
+
+## 5. Read the state
+
+```swift
+let state = try skyra.state()
+state.visitorId                          // a ULID
+state.surveys["acme/feedback"]?.state    // .selected, .capture, .completed, .rejected
+state.surveys["acme/feedback"]?.sessionId
+```
+
+The first call creates the visitor ID.
+
+A survey entry is dropped 400 days after its state last changed. The visitor ID is
+kept until the storage is cleared. If the storage is lost, the visitor gets a new ID
+and is treated as new.
+
+## 6. Example: show a survey in a web view
+
+This is one way to show a survey. If you show surveys another way, store what the
+visitor did with `sync` as in step 4, and skip this step.
+
+To show a survey in your own `WKWebView`, write a page that loads the Skyra widget and
+places `<skyra-survey>` with the slug from step 3. `widgetConfig` gives you the widget's
+configuration, filled in:
+
+```swift
+let html = """
+<body>
+<script>\(try skyra.widgetConfig())</script>
+<script src="https://survey.skyra.no/skyra-survey.js"></script>
+<skyra-survey slug="\(survey.slug)"></skyra-survey>
+"""
+
+let configuration = WKWebViewConfiguration()
+configuration.userContentController.add(handler, name: Skyra.messageHandlerName)
+let webView = WKWebView(frame: .zero, configuration: configuration)
+webView.loadHTMLString(html, baseURL: URL(string: "https://acme.com")!)
+```
+
+It sets the organisation, the traits your latest `getSurveys` call sent, and a store
+holding this visitor's state, so the widget is the same visitor as the app and keeps
+nothing in cookies.
+
+The widget posts everything it saves to the `skyra` message handler. Merge each message
+into the stored state:
+
+```swift
+func userContentController(
+    _ controller: WKUserContentController,
+    didReceive message: WKScriptMessage
+) {
+    guard message.frameInfo.isMainFrame,
+          let state = try? SkyraState(widget: message.body) else { return }
+    _ = try? skyra.sync(state)
+}
+```
+
+Take messages from the main frame only, as above, so an embedded frame cannot write
+state. Pass an https `baseURL`: the widget does not ask Skyra from a `file:`,
+`about:` or custom-scheme page. The widget hands state to the app only when Skyra has
+switched on the `widget-store` feature for your organisation. The content controller keeps its handler alive, so remove it
+with `removeScriptMessageHandler(forName:)` when the web view goes away.
+
+What the widget saves has two parts, both stored and handed back:
+
+- `state`: the visitor ID and each survey's state.
+- `progress`: for a survey the visitor is part-way through, where they are in it.
+
+A survey with progress is stored as `Capture`. When the visitor finishes or closes it,
+the widget clears the progress and saves `Completed` or `Rejected`. A visitor who
+leaves half-way continues at the same question in the same session the next time you
+open the web view. Because every change is stored as it arrives, there is nothing to
+fetch when the web view closes.
+
+`SkyraState(widget:)` reads that object. To exchange state with something other than
+the widget, `SkyraState(jsonObject:)` and `SkyraState(json:)` read this shape:
+
+```json
+{
+  "visitorId": "01JD8ZQ6K3Y7M2N4P5R6S7T8V9",
+  "surveys": {
+    "acme/feedback": { "state": "Completed", "lastSync": 1794832273590, "sessionId": "01JD8ZR1M4XQ2B7C9D0E1F2G3H" }
+  }
+}
+```
+
+`sync` merges with these rules:
+
+- The visitor ID that was created first is kept.
+- For each survey, the entry with the later `lastSync` wins.
+- When the times are equal, the state that is further along wins: `Selected`, then
+  `Capture`, then `Rejected`, then `Completed`.
+- Surveys of other organisations, entries older than 400 days and entries dated more than
+  five minutes ahead are ignored.
+- A visitor ID dated in the future is refused with `SkyraError.invalidState`.
+- At most 200 surveys are kept, the latest first, and at most 1 MB of progress. When
+  there is more, the oldest goes first.
+- A survey entry that is malformed, has no `lastSync`, or is in a state the SDK does
+  not store, is left out.
+
+Syncing the same state twice changes nothing, so it is safe to sync on every message.
+
+## Errors
+
+| Error | Meaning |
+| --- | --- |
+| `SkyraError.invalidConfiguration` | The organisation, service address, language or configured traits are not usable. |
+| `SkyraError.invalidTraits` | A trait passed to `getSurveys` has a name that is not a slug or a value that is too long, or there are too many. |
+| `SkyraError.invalidState` | The state passed to `sync` is not readable or has no valid visitor ID. |
+| `SkyraError.storageFailure` | The state could not be read or written. |
+| `SkyraError.requestTooLarge` | The decision request would exceed the service's 64 KB limit. Send fewer or shorter traits. |
+| `SkyraError.decisionHTTPStatus(code)` | The decision service answered with this status. 404 means it does not know the organisation. |
+| `SkyraError.invalidDecisionResponse` | The decision service's answer could not be understood. |
+
+`getSurveys` can also throw `URLError`, for example on a timeout, and
+`CancellationError` when its task is cancelled. Treat every error from `getSurveys`
+as "show nothing".
+
+## Test environments and localhost
+
+The SDK uses `https://ingest.skyra.no` for decisions and needs no address
+configuration. If Skyra supplied a test environment, pass its origin:
 
 ```swift
 let configuration = SkyraConfiguration(
-    organization: "organisation",
-    surveyDecision: { context in
-        try await context.defaultDecision()
-    }
+    organization: "acme",
+    decisionOrigin: URL(string: "http://localhost:3212")!
 )
 ```
 
-Return `.present(slug:initialDelayMilliseconds:)` or `.notShown(reason:)` to supply a
-custom complete decision. The SDK still validates the slug and delay and enforces
-presentation ownership and host-safety checks, but does not rerun its default
-eligibility policy for a custom decision. Explicit requested slugs must be retained;
-when the request omitted a slug, a returned slug must belong to the configured
-organization. This API does not provide or imply a remote endpoint or transport.
-
-`surveyDecision` is the single decision API for both screen and following requests.
-The default survey-list lookup is internal to the SDK.
-
-## UIKit: install at the window and attach to a controller
-
-In your existing scene-based window setup, assign the scene and your root controller
-before installing Skyra, then show the window. Use your existing scene and controller:
-
-```swift
-import Skyra
-import UIKit
-
-window.windowScene = windowScene
-window.rootViewController = rootViewController
-Skyra.install(in: window, configuration: .init(organization: "organisation"))
-// Screen-scoped integration; no wrapper required.
-window.makeKeyAndVisible()
-```
-
-Install after setting `rootViewController`; a repeated install on the same window
-keeps the original installation and configuration. The window retains
-the installation. There is no need to pass an SDK through
-navigation or tab controllers. In the view controller that should show the survey,
-attach it once in `viewDidLoad`:
-
-```swift
-import Skyra
-import UIKit
-
-final class CheckoutViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // Keep your existing screen setup here.
-        skyraSurvey() // or skyraSurvey("organisation/feedback")
-    }
-}
-```
-
-The attachment requests on appearance and cancels on departure. Cancellation while
-waiting for activation, presenter readiness, delivery, or display delay does not
-call `onError`. Once presentation has begun, interruption calls `onOutcome` with
-`.interrupted`, or `.completed` if acceptance was already confirmed. Re-entering the screen requests
-again. Use the optional `onOutcome` and `onError` callbacks for results, as in the
-SwiftUI example. The controller retains the attachment; retain
-the returned handle only if you need to call `detach()` before the screen leaves.
-Detaching interrupts rather than rejecting the survey.
-
-## Custom service addresses and localhost
-
-Normally the SDK uses `https://survey.skyra.no` for hosted pages and
-`https://ingest.skyra.no` for delivery. No address configuration is needed.
-
-If Skyra supplied a test environment, create a configuration with those origins:
-
-```swift
-let configuration = SkyraConfiguration(
-    hostedOrigin: URL(string: "http://localhost:5173")!,
-    deliveryOrigin: URL(string: "http://localhost:3212")!
-)
-```
-
-Pass it to `.skyra(configuration: configuration)` in SwiftUI, or
-`Skyra.install(in: window, configuration: configuration)` in UIKit.
-
-Use origins only: do not append `/app.html`, a survey slug, or an API path. HTTP is
-accepted only for loopback hosts such as `localhost`; other hosts require HTTPS.
+Use the origin only, without a path. HTTP is accepted only for `localhost`,
+`127.0.0.1` and `::1`; other hosts require HTTPS.
 
 For HTTP localhost testing, open the app target's **Info** tab. Add **App Transport
 Security Settings** as a dictionary, then **Allow Local Networking** as Boolean
 **YES** inside it. The raw keys are `NSAppTransportSecurity` and
-`NSAllowsLocalNetworking`. Add to any existing dictionary rather than replacing
-its other entries. **Allow Arbitrary Loads** is not needed.
+`NSAllowsLocalNetworking`. Add to any existing dictionary and keep its other entries.
 
-Use the iOS Simulator for localhost: it reaches services on your Mac. A physical
-iPhone's localhost refers to the phone itself. The supplied services must already
-be running; the SDK does not start them.
+Use the iOS Simulator for localhost, because it reaches services on your Mac. A
+physical iPhone's localhost is the phone itself.
 
-## Screen lifetime and saved progress
+## If no survey comes back
 
-| Action | Skyra behavior |
-| --- | --- |
-| Enter an attached screen | Resolves an explicit slug or selects the configured organization's default, then checks availability, capture, and cooldowns before applying the display delay. |
-| Leave during checks or delay | Cancels without recording rejection. |
-| Leave an unfinished popup | Removes it, reports `.interrupted`, and preserves supported progress. |
-| Return to the screen | Requests again. Valid unfinished progress resumes without the initial delay. |
-| Press Close | Records rejection, clears unfinished progress, and reports `.rejected`. |
-| Complete the survey | Reports `.completed` after the hosted page confirms final answer acceptance. |
-
-After someone finishes or closes an unfinished survey, that same survey cannot
-appear again during its waiting period. In the dashboard, **Retake in** sets the
-wait after completion; **Retrigger after** sets it after closing before completion.
-For example, with **Retake in** set to one day, a request made earlier will not show
-the survey.
-
-When a cooldown blocks a request, it ends immediately. Skyra does not queue the
-survey or show it automatically when the cooldown expires. Your app must request it
-again later, and that new request is checked against the survey's current settings;
-it is not guaranteed to show. This rule applies to screen-scoped and following
-requests, whether the request supplies a slug or selects one. It is separate from
-**Show after**, the initial delay applied within an eligible request. When default
-selection chooses a survey that cannot currently be shown, Skyra does not try a
-later survey.
-
-Each participating screen needs an explicit attachment for screen-scoped behavior.
-That attachment is intentionally different from explicit following mode above. An
-omitted slug in either mode invokes configured selection; an explicit slug bypasses
-it. The default decision returns no presentation when there is no App survey.
-Screen requests may take priority over following surveys as described above.
-
-With the direct async `presentSurvey` API, cancellation while waiting or preparing
-throws `CancellationError`; cancellation of a displayed survey returns `.interrupted`.
-
-If the window is not active when the screen first appears, its request waits for
-activation. Once an attempt starts, deactivating the window cancels pending work
-or interrupts the popup. Foregrounding alone does not repeat that attempt; leaving
-and re-entering the attached screen makes a new request.
-
-By default, native progress persists across app launches. Question position and
-supported selections can be restored; typed free-text answers cannot. Saved
-records expire after 365 days without an update.
-
-## Design & Preview
-
-Configure theme, fonts, and survey-specific overrides in Skyra's **Design & Preview**.
-Review the mobile preview, then check the published survey in your app with its
-intended appearance and text-size settings. No Swift styling code is needed for
-hosted survey content.
-
-The hosted page owns colors, typography, controls, and internal layout. Swift owns
-the floating frame, safe areas, keyboard clearance, drag handle, and outer clipping,
-and passes Dynamic Type scale to the page. Larger text may require scrolling.
-
-The popup appears near the bottom trailing corner without dimming the app. While
-the keyboard is open, the first tap outside may dismiss it before another tap
-activates an app control.
-
-## If the survey does not appear
-
-Add the optional result/error callbacks and read Xcode's console:
-
-| Result or error | Meaning and next step |
-| --- | --- |
-| `missingRoot` | Add `.skyra()` above the SwiftUI screen, or install in the UIKit window before the attached screen appears. |
-| `missingFollowingHost` | Add the SwiftUI `.skyra()` root or wrap the UIKit root in `SkyraRootViewController(content:)` before `Skyra.install(in:)`. |
-| `missingOrganization` | Set `organization` in `SkyraConfiguration`, or supply an explicit survey slug. |
-| `invalidConfiguration` | Check the supplied origins; use HTTPS except for loopback development hosts. |
-| `.notShown(reason: .captureNotSelected)` | Sampling skipped this attempt. Use 100% capture for initial testing. |
-| `.notShown(reason: .unavailable)` | Check the slug, publication, iOS type, and questions. |
-| `completedCooldown` or `rejectedCooldown` | A prior result is still within its configured waiting period. |
-| `presenterUnavailable` | The screen is detached or covered and cannot present. |
-| `alreadyPresenting` | Another request or popup is still finishing; requests are not queued. |
-| Another error or `.failure(code)` | Check service connectivity; send Skyra the logged error/code if it persists. |
-
-If package resolution fails, confirm repository availability with Skyra. If the
-repository is private, also check your GitHub account access in Xcode. If `import Skyra`
-fails, check that the package product is linked to the app target.
-
-## Advanced explicit integration
-
-The existing `Skyra`, `SkyraPresenter`, and `presentSurvey(slug:from:)` APIs remain
-available for apps that manage presentation directly. Use one integration style
-for a screen; do not add a second manual request alongside its survey attachment.
+- Check that the survey is published as an inline survey with an audience rule on
+  `channel` equal to `app`.
+- Check that the survey has no URL rules, and that the traits you pass match its
+  audience rules, including the screen.
+- Print `try skyra.state()`. A survey in `Completed` or `Rejected` is left out until
+  its retake or retrigger time has passed. Use `.ephemeral`
+  persistence while testing to start from an empty state on each launch.
+- A `decisionHTTPStatus(404)` error means the organisation identifier is wrong.
+- A `URLError` timeout means the service did not answer within 1.5 seconds.

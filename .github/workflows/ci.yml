@@ -1,4 +1,4 @@
-# Automatic Linux checks; opt-in Xcode builds and simulator tests.
+# Automatic Linux checks and a build on the minimum toolchain; opt-in Xcode builds and simulator tests.
 name: Swift Package
 
 on:
@@ -32,6 +32,25 @@ jobs:
       - name: Validate package contract
         run: bash Scripts/check-package.sh
 
+  minimum-toolchain:
+    name: Build and test (Xcode 15.0.1, Swift 5.9)
+    runs-on: macos-14
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_15.0.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Build package
+        run: swift build
+      - name: Test package on macOS
+        run: swift test
+
   package:
     if: github.event_name == 'workflow_dispatch'
     name: Package (Xcode ${{ matrix.xcode }})
@@ -41,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Older and newer installed Xcodes; neither is the declared minimum toolchain.
+          # Older and newer installed Xcodes. The minimum toolchain has its own job above.
           - os: macos-15
             xcode: '16.4'
           - os: macos-15

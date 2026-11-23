@@ -1,19 +1,16 @@
 # Contributing
 
-Skyra is an unreleased iOS beta, licensed under [MIT](LICENSE).
+Skyra is an iOS beta, licensed under [MIT](LICENSE).
 
 ## Scope
 
-This package contains the native Swift SDK and tests. Hosted survey rendering is
-provided by Skyra's service. Keep hosted implementation source, demo applications,
-local automation configuration, and runtime evidence out of the package.
+This package is a headless Swift toolkit: it stores the visitor's survey state, calls
+the decision service, and merges state from the app and the web widget. It shows no UI. Showing surveys is the
+integrating app's job, usually with the Skyra widget in a web view. Keep demo applications, local automation configuration, and
+runtime evidence out of the package.
 
-The customer API supports screen-scoped attachments and explicitly triggered,
-installation-owned following presentation. Either accepts an exact slug or, when
-omitted, selects through `SkyraConfiguration.surveyDecision`. The default decision
-selects the first response-order App survey from delivery and applies native
-eligibility. A custom decision replaces both selection and eligibility. Keep documentation
-aligned with these public behaviors rather than describing internal prototypes.
+Request and response shapes follow Skyra's survey decision contract. Keep the
+documentation aligned with the public API in `Sources/Skyra`.
 
 ## Checks
 
@@ -33,11 +30,11 @@ checksum-verified SwiftFormat binary into `.build/` on first use.
 For native changes, run the relevant package and simulator tests with the selected
 Xcode developer directory; commands are in the [README](README.md#development-checks).
 Add meaningful tests and update customer documentation for behavior changes.
-Automatic PR and main-branch CI checks formatting and the package contract. Expensive
-Xcode builds and simulator tests are manual-only through **Actions → Swift Package →
-Run workflow**. The manual matrix uses macOS 15 with Xcode 16.4 and 26.3, not the
-declared minimum Xcode 15.0.1 / Swift 5.9 toolchain; it does not establish iOS 15
-runtime coverage. Public requirements remain unchanged. Do not imply readiness or
+Automatic PR and main-branch CI checks formatting and the package contract, and builds
+and tests the package on macOS with the declared minimum Xcode 15.0.1 / Swift 5.9
+toolchain. Newer Xcode builds and simulator tests are manual-only through **Actions →
+Swift Package → Run workflow**. The manual matrix uses macOS 15 with Xcode 16.4 and
+26.3; it does not establish iOS 15 runtime coverage. Public requirements remain unchanged. Do not imply readiness or
 validation counts without results from the validation owner for the relevant revision.
 
 ## Review
