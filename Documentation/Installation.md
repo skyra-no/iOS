@@ -116,9 +116,11 @@ window.SKYRA_CONFIG = {
 ```
 
 The `store` reads the visitor's state from the app and sends every change back to your
-handler, so the widget and the app share one visitor ID and nothing is kept in cookies. `handler` is your
-`WKScriptMessageHandler`. It receives every change the widget saves; pass each one to
-`sync`:
+handler, so the widget and the app share one visitor ID and nothing is kept in
+cookies.
+
+`handler` is your `WKScriptMessageHandler`. It receives every change the widget
+saves; pass each one to `sync`:
 
 ```swift
 func userContentController(
