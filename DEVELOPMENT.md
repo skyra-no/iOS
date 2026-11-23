@@ -14,6 +14,15 @@ xcodebuild -scheme Skyra -destination 'platform=iOS Simulator,name=iPhone 16' te
 
 With several Xcode versions installed, set `DEVELOPER_DIR` to the one you want.
 
+## Local decision service
+
+Point an app at a local decision service with
+`SkyraConfiguration(organization:decisionOrigin:)`, for example
+`URL(string: "http://localhost:3212")!`. Use the origin only, without a path. HTTP is
+accepted only for `localhost`, `127.0.0.1` and `::1`, and the app needs **App
+Transport Security Settings → Allow Local Networking = YES**. Use the Simulator: on a
+physical iPhone, localhost is the phone itself.
+
 ## CI
 
 Every pull request and push to `main` runs the format and package checks, and
