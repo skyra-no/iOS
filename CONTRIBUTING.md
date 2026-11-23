@@ -4,8 +4,8 @@
 
 The SDK stores the visitor's survey state, asks the decision service which surveys to
 show, and merges in what the widget reports. It decides nothing itself and has no UI.
-Requests and responses follow Skyra's survey decision contract. Keep the docs in step
-with the public API in `Sources/Skyra`, and keep demo apps out of the package.
+Keep the docs in step with the public API in `Sources/Skyra`, and keep demo apps out
+of the package.
 
 ## Checks
 
@@ -31,9 +31,9 @@ them locally for changes that touch iOS behaviour.
 ## Pull requests
 
 Open one against `main` with the problem, the change and how you tested it. Add tests
-for behaviour changes and update the guide. Source files: `Storage.swift`,
-`SkyraState.swift`, `DecisionService.swift` and `BoundedTransport.swift` cover what is
-stored and sent, so check `Documentation/Privacy.md` when you change them.
+for behaviour changes and update the guide. `Storage.swift`,
+`SkyraState.swift`, `DecisionService.swift` and `BoundedTransport.swift` define what
+is stored and sent. Update `Documentation/Privacy.md` when you change them.
 
 Report bugs in [GitHub Issues](https://github.com/skyra-no/iOS/issues). Leave out
 credentials, survey answers and customer data.

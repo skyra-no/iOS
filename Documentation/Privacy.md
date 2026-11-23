@@ -34,8 +34,8 @@ App-local UserDefaults under the `no.skyra.sdk` prefix, one value per organisati
 - for a survey in progress, the widget's progress: which question the visitor is on
   and the options chosen so far.
 
-No written answers, traits or survey definitions are stored, and progress is never
-sent. UserDefaults isn't encrypted by the SDK.
+No written answers, traits or survey definitions are stored. Progress isn't sent with
+`getSurveys`; it goes only to the widget in your page. UserDefaults isn't encrypted by the SDK.
 
 A survey entry is dropped 400 days after it last changed. At most 200 entries and
 1 MB of progress are kept, oldest dropped first. Old entries are removed the next time
