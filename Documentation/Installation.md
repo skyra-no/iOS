@@ -12,11 +12,13 @@ widget in your own web view.
 - Your organisation's identifier in Skyra.
 - **Audience targeting** switched on by an organisation admin under
   **Settings → General → Early access · Organisation**.
-- `app-surveys` (retake and retrigger times in the app) and `widget-store` (the widget
-  reports to the app) switched on for your organisation. Ask Skyra at support@skyra.no.
-- A published inline survey with no URL rules and an Include audience rule on the
-  trait `channel` equal to `app`. The SDK always sends `channel: app` and your website
-  doesn't, so the survey shows in the app only.
+- `app-surveys` and `widget-store`, switched on for your organisation by Skyra (ask at
+  support@skyra.no). With `app-surveys`, a finished survey stays away until its retake
+  time has passed. With `widget-store`, the app learns what the visitor did in the web
+  view.
+- A published inline survey with no URL rules and the audience rule **Include if
+  `channel` equals `app`**. Only the app sends that trait, so the survey never shows on
+  your website.
 
 ## 1. Install
 
