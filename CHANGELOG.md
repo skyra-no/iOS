@@ -7,6 +7,8 @@ Until 1.0, a new minor version can change the API. A patch version does not.
 - `Skyra.messageHandler` receives what the survey in a web view reports and stores
   it. Register it under `Skyra.messageHandlerName` instead of writing your own
   `WKScriptMessageHandler`.
+- `SkyraSurveyListener`, passed with `skyra.messageHandler(listener:)`, is told when a
+  survey changes state, for example to close the web view when it's finished.
 
 ## 0.1.0
 
