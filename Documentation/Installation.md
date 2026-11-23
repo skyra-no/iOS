@@ -12,7 +12,8 @@ widget in your own web view.
 - Your organisation's identifier in Skyra.
 - **Audience targeting** switched on by an organisation admin under
   **Settings → General → Early access · Organisation**.
-- `app-surveys` and `widget-store` switched on for your organisation by Skyra.
+- `app-surveys` (retake and retrigger times in the app) and `widget-store` (the widget
+  reports to the app) switched on for your organisation. Ask Skyra.
 - A published inline survey with no URL rules and an Include audience rule on the
   trait `channel` equal to `app`. The SDK always sends `channel: app` and your website
   doesn't, so the survey shows in the app only.
@@ -64,13 +65,14 @@ do {
 guard let survey = surveys.first else { return }   // nothing to show
 ```
 
-Show the first survey: Skyra puts one the visitor is part-way through first. Treat an
+Show the first survey; a survey the visitor has started always comes first. Treat an
 error like an empty list.
 
-The traits you pass describe this moment and are added to the configured ones.
-Screens are traits: a survey aimed at the checkout screen comes back when you pass
-`["screen": "checkout"]`. Call it when the screen or a trait changes, not in a loop.
-The request gives up after 1.5 seconds and isn't retried.
+Traits you pass here are added to the configured ones, for this call only. Screens
+are traits: a survey aimed at the checkout screen comes back when you pass
+`["screen": "checkout"]`. Call `getSurveys` when the screen or a trait changes, not
+in a loop. The request gives up after 1.5 seconds and isn't retried, so a slow
+network means no survey this time.
 
 ## 4. Show the survey in a web view
 
@@ -99,7 +101,7 @@ webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
 ```
 
 `widgetConfig()` gives the widget your organisation, your traits and the visitor's
-stored state, so the widget and the app are the same visitor. `handler` is your
+stored state, so the widget and the app share one visitor ID. `handler` is your
 `WKScriptMessageHandler`. It receives every change the widget saves; pass each one to
 `sync`:
 
@@ -114,7 +116,8 @@ func userContentController(
 }
 ```
 
-- Take messages from the main frame only, as above.
+- Take messages from the main frame only, as above, so an embedded frame can't write
+  state.
 - Use an `https` `baseURL`. The host doesn't have to exist; nothing is loaded from it.
 - Remove the handler with `removeScriptMessageHandler(forName:)` when the web view
   goes away; the content controller keeps it alive.
@@ -131,7 +134,8 @@ same question next time.
 | `Completed` | The visitor finished. | Left out until the survey's retake time has passed. |
 | `Rejected` | The visitor closed it unfinished. | Left out until the survey's retrigger time has passed. |
 
-Skyra applies these, not the SDK. `sync` merges what the widget sends with what is
+Retake and retrigger times are set on the survey in Skyra and applied there, so you
+can change them without an app update. `sync` merges what the widget sends with what is
 stored, and the latest change per survey wins. Entries are dropped 400 days after
 they last changed. The details are in the [reference](Reference.md).
 
@@ -140,7 +144,7 @@ they last changed. The details are in the [reference](Reference.md).
 | Error | Meaning |
 | --- | --- |
 | `SkyraError.invalidConfiguration` | A setting is not usable. Traits: at most 49, names of letters, digits, `_` and `-`, values up to 256 characters. |
-| `SkyraError.invalidTraits` | A trait passed to `getSurveys` breaks the same rules, or there are too many together. |
+| `SkyraError.invalidTraits` | A trait passed to `getSurveys` breaks the same rules, or configured and passed traits together exceed 49. |
 | `SkyraError.invalidState` | The state passed to `sync` is not readable or has no valid visitor ID. |
 | `SkyraError.storageFailure` | The state could not be read or written. |
 | `SkyraError.requestTooLarge` | The request would exceed the service's 64 KB limit. Send fewer or shorter traits. |
@@ -178,9 +182,12 @@ on a physical iPhone, localhost is the phone itself.
 - `decisionHTTPStatus(404)` means the organisation identifier is wrong.
 - A `URLError` timeout means the service didn't answer within 1.5 seconds.
 
-## If a survey keeps coming back
+## If a finished survey comes back
 
-- A finished survey comes back on the next call: `app-surveys` isn't switched on.
-- Progress is lost, or `skyra.state()` stays empty after the visitor answers:
-  `widget-store` isn't switched on, or your handler isn't registered under
-  `Skyra.messageHandlerName`.
+`app-surveys` isn't switched on for your organisation.
+
+## If state isn't saved
+
+If progress is lost, or `skyra.state()` stays empty after the visitor answers,
+`widget-store` isn't switched on, or your handler isn't registered under
+`Skyra.messageHandlerName`.
