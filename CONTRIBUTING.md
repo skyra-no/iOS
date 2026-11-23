@@ -1,47 +1,39 @@
 # Contributing
 
-Skyra is an iOS beta, licensed under [MIT](LICENSE).
-
 ## Scope
 
-This package is a headless Swift toolkit: it stores the visitor's survey state, calls
-the decision service, and merges state from the app and the web widget. It shows no UI. Showing surveys is the
-integrating app's job, usually with the Skyra widget in a web view. Keep demo applications, local automation configuration, and
-runtime evidence out of the package.
-
-Request and response shapes follow Skyra's survey decision contract. Keep the
-documentation aligned with the public API in `Sources/Skyra`.
+The SDK stores the visitor's survey state, asks the decision service which surveys to
+show, and merges in what the widget reports. It decides nothing itself and has no UI.
+Requests and responses follow Skyra's survey decision contract. Keep the docs in step
+with the public API in `Sources/Skyra`, and keep demo apps out of the package.
 
 ## Checks
 
-The declared minimums are Xcode 16.0 (Swift 6.0 toolchain) and Swift 5 language mode
-for iOS development. These requirements are not a claim that every change has been tested
-on every minimum version. Run from the repository root:
+The minimum is Xcode 16.0 with Swift 5 language mode. Run from the repository root:
 
 ```sh
-bash Scripts/format-swift.sh
-bash Scripts/format-swift.sh --lint
-bash Scripts/check-package.sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+bash Scripts/format-swift.sh          # formats; add --lint to only check
+bash Scripts/check-package.sh         # needs jq
+swift test
+xcodebuild -scheme Skyra -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -derivedDataPath DerivedData test
 ```
 
-Package-contract validation requires `jq`. The formatter script downloads a pinned,
-checksum-verified SwiftFormat binary into `.build/` on first use.
+The format script downloads a pinned, checksum-verified SwiftFormat into `.build/` on
+first use.
 
-For native changes, run the relevant package and simulator tests with the selected
-Xcode developer directory; commands are in the [README](README.md#development-checks).
-Add meaningful tests and update customer documentation for behavior changes.
-Automatic PR and main-branch CI checks formatting and the package contract, and builds
-and tests the package on macOS with the declared minimum, Xcode 16.0. Newer Xcode builds and simulator tests are manual-only through **Actions →
-Swift Package → Run workflow**. The manual matrix uses macOS 15 with Xcode 16.4 and
-26.3; it does not establish iOS 15 runtime coverage. Do not imply readiness or
-validation counts without results from the validation owner for the relevant revision.
+CI runs on every pull request and on `main`: formatting and the package check on
+Linux, and `swift test` on Xcode 16.0. Simulator tests on newer Xcode versions run
+only when started by hand under **Actions → Swift Package → Run workflow**, so run
+them locally for changes that touch iOS behaviour.
 
-## Review
+## Pull requests
 
-Open a pull request against `main` with the problem, change, and checks performed.
-Keep changes focused and preserve historical test evidence. Test-result summaries
-should identify the revision, toolchain, runtime, and limits of the test.
+Open one against `main` with the problem, the change and how you tested it. Add tests
+for behaviour changes and update the guide. Source files: `Storage.swift`,
+`SkyraState.swift`, `DecisionService.swift` and `BoundedTransport.swift` cover what is
+stored and sent, so check `Documentation/Privacy.md` when you change them.
 
-Use [GitHub Issues](https://github.com/skyra-no/iOS/issues) for reproducible
-bugs and integration questions. Do not include credentials, personal survey
-answers, or private customer data in reports or screenshots.
+Report bugs in [GitHub Issues](https://github.com/skyra-no/iOS/issues). Leave out
+credentials, survey answers and customer data.
