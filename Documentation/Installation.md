@@ -48,7 +48,6 @@ thread.
 | `language` | The language your app shows its content in, such as `nb` or `en-GB`. |
 | `traits` | Traits that hold for the whole session, such as `plan`. |
 | `persistence` | `.persistent` (default) keeps the state in UserDefaults; `.ephemeral` keeps it in memory. |
-| `decisionOrigin` | The decision service. Change it only for a test environment. |
 
 To store the state elsewhere, pass `storage:` with a `SkyraUserDefaultsStorage` or
 your own `SkyraStorage`. Don't share a UserDefaults suite between an app and an
@@ -183,22 +182,6 @@ they last changed. The details are in the [reference](Reference.md).
 
 `getSurveys` can also throw `URLError`, for example on a timeout, and
 `CancellationError` when its task is cancelled.
-
-## Test environments and localhost
-
-If Skyra gave you a test environment, pass its origin:
-
-```swift
-let configuration = SkyraConfiguration(
-    organization: "acme",
-    decisionOrigin: URL(string: "http://localhost:3212")!
-)
-```
-
-Use the origin only, without a path. HTTP is accepted only for `localhost`,
-`127.0.0.1` and `::1`. For HTTP on localhost, add **App Transport Security Settings →
-Allow Local Networking = YES** to the app target's **Info** tab, and use the Simulator:
-on a physical iPhone, localhost is the phone itself.
 
 ## If no survey comes back
 
