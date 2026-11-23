@@ -10,8 +10,8 @@ the Skyra widget in your own web view (step 4).
 - Access to the `skyra-no/iOS` repository from your GitHub account in Xcode. Ask
   Skyra for it.
 - Your organisation's identifier in Skyra.
-- **Audience targeting** switched on by an admin under Early access in your
-  organisation settings, so you can add the `channel` rule below.
+- **Audience targeting** switched on by an organisation admin under
+  **Settings → General → Early access · Organisation**, so you can add the `channel` rule below.
 - These features switched on for your organisation by Skyra:
   - `app-surveys`. Skyra then applies the survey's retake and retrigger times in the
     app. Without it, a finished survey comes back on the next call.
@@ -71,7 +71,13 @@ value atomically, and throw when it can't.
 ## 3. Ask which surveys to show
 
 ```swift
-let surveys = (try? await skyra.getSurveys(traits: ["screen": "checkout"])) ?? []
+let surveys: [SkyraSurvey]
+do {
+    surveys = try await skyra.getSurveys(traits: ["screen": "checkout"])
+} catch {
+    print("Skyra:", error)   // see Errors below
+    surveys = []
+}
 guard let survey = surveys.first else { return }   // nothing to show
 // survey.slug is "acme/feedback", survey.language is "nb"
 ```
