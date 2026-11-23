@@ -8,7 +8,7 @@ Surveys are shown by the Skyra widget in your own web view. Beta, iOS only.
 
 - iOS 15+, Xcode 16.0+, Swift 5 language mode.
 - No dependencies. The package bundles a privacy manifest.
-- Skyra switches on `app-surveys` and `widget-store` for your organisation. See
+- Three features switched on for your organisation. See
   [what you need](Documentation/Installation.md#what-you-need).
 
 ## Install
@@ -28,7 +28,7 @@ let skyra = try Skyra(configuration: .init(organization: "acme", language: "nb")
 // Ask when the screen or a trait changes.
 let surveys = try await skyra.getSurveys(traits: ["screen": "checkout"])
 
-// Show surveys[0].slug with <skyra-survey> in your web view, configured with
+// Show surveys.first with <skyra-survey> in your web view, configured with
 // skyra.widgetConfig(). In its WKScriptMessageHandler, store what the widget reports:
 try skyra.sync(SkyraState(widget: message.body))
 ```
