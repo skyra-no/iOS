@@ -78,8 +78,11 @@ network means no survey this time.
 
 ## 4. Show the survey in a web view
 
-Show the survey with the Skyra widget in a `WKWebView`, with `<html lang>` set to
-`survey.language`:
+The Skyra widget shows the survey in a `WKWebView`. While the visitor answers, the
+widget sends every change it saves to the app, and the app stores it. That takes
+three pieces: a page, a handler that receives the changes, and the web view.
+
+### The page
 
 ```swift
 let html = """
@@ -95,14 +98,10 @@ let html = """
       </body>
     </html>
     """
-
-let configuration = WKWebViewConfiguration()
-configuration.userContentController.add(handler, name: Skyra.messageHandlerName)
-let webView = WKWebView(frame: .zero, configuration: configuration)
-webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
 ```
 
-`widgetConfig()` returns a short script that configures the widget before it loads:
+`<html lang>` makes the widget use the language Skyra chose. `widgetConfig()` returns
+a short script that configures the widget before it loads:
 
 ```js
 window.SKYRA_CONFIG = {
@@ -115,32 +114,46 @@ window.SKYRA_CONFIG = {
 }
 ```
 
-The `store` reads the visitor's state from the app and sends every change back to your
-handler, so the widget and the app share one visitor ID and nothing is kept in
-cookies.
+The `store` is how the widget talks to the app: it reads the visitor's state from the
+app instead of cookies, and posts every change to the handler below.
 
-`handler` is your `WKScriptMessageHandler`. It receives every change the widget
-saves; pass each one to `sync`:
+### The handler
+
+The changes arrive as messages to a `WKScriptMessageHandler`. Pass each one to
+`sync`, which stores it:
 
 ```swift
-func userContentController(
-    _ controller: WKUserContentController,
-    didReceive message: WKScriptMessage
-) {
-    guard message.frameInfo.isMainFrame,
-          let state = try? SkyraState(widget: message.body) else { return }
-    _ = try? skyra.sync(state)
+final class SurveyHandler: NSObject, WKScriptMessageHandler {
+    func userContentController(
+        _ controller: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.frameInfo.isMainFrame,
+              let state = try? SkyraState(widget: message.body) else { return }
+        _ = try? skyra.sync(state)
+    }
 }
 ```
 
-- Take messages from the main frame only, as above, so an embedded frame can't write
-  state.
-- Use an `https` `baseURL`. The host doesn't have to exist; nothing is loaded from it.
-- Remove the handler with `removeScriptMessageHandler(forName:)` when the web view
-  goes away; the content controller keeps it alive.
+The main-frame check stops an embedded frame from writing state.
 
-Every change is stored as it arrives. A visitor who leaves halfway continues at the
-same question next time.
+### The web view
+
+Register the handler under `Skyra.messageHandlerName` and load the page:
+
+```swift
+let configuration = WKWebViewConfiguration()
+configuration.userContentController.add(SurveyHandler(), name: Skyra.messageHandlerName)
+let webView = WKWebView(frame: .zero, configuration: configuration)
+webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
+```
+
+- Use an `https` `baseURL`. The host doesn't have to exist; nothing is loaded from it.
+- The content controller keeps the handler alive. Remove it with
+  `removeScriptMessageHandler(forName:)` when the web view goes away.
+
+Every change is stored as it arrives, so there's nothing to do when the web view
+closes. A visitor who leaves halfway continues at the same question next time.
 
 ## Survey states
 
