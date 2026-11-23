@@ -10,9 +10,14 @@ final class MessageHandlerTests: XCTestCase {
     {"state":{"_id":"\(Fixture.olderVisitor)","org/feedback":{"state":"Completed","lastSync":\(Fixture.now)}},"progress":{}}
     """
 
-    private func load(_ html: String, into sdk: Skyra) -> WKWebView {
+    private func load(
+        _ html: String,
+        into sdk: Skyra,
+        listener: SkyraSurveyListener? = nil
+    ) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(sdk.messageHandler, name: Skyra.messageHandlerName)
+        let handler = listener.map { sdk.messageHandler(listener: $0) } ?? sdk.messageHandler
+        configuration.userContentController.add(handler, name: Skyra.messageHandlerName)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.loadHTMLString(html, baseURL: URL(string: "https://app.example.com")!)
         return webView
@@ -38,6 +43,26 @@ final class MessageHandlerTests: XCTestCase {
 
         XCTAssertEqual(try sdk.state().surveys["org/feedback"]?.state, .completed)
         XCTAssertEqual(try sdk.state().visitorId, Fixture.olderVisitor)
+        _ = webView
+    }
+
+    func testTheListenerHearsEachChangeOnce() throws {
+        final class Listener: SkyraSurveyListener {
+            var heard: [String] = []
+            func surveyDidChange(_ slug: String, to state: SkyraState.Status) {
+                heard.append("\(slug)=\(state.rawValue)")
+            }
+        }
+        let sdk = try Fixture.sdk()
+        let listener = Listener()
+        let post = "window.webkit.messageHandlers.skyra.postMessage(\(posted))"
+        let webView = load("<script>\(post);\(post)</script>", into: sdk, listener: listener)
+
+        waitUntil { !listener.heard.isEmpty }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        XCTAssertEqual(listener.heard, ["org/feedback=Completed"], "Stored first, then told once")
+        XCTAssertEqual(try sdk.state().surveys["org/feedback"]?.state, .completed)
         _ = webView
     }
 

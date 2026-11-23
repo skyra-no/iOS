@@ -126,6 +126,31 @@ webView.loadHTMLString(html, baseURL: URL(string: "https://app.acme.com")!)
 Everything is stored as it happens, so there's nothing to do when the web view
 closes. A visitor who leaves halfway continues at the same question next time.
 
+### Closing the web view when the survey ends
+
+The survey doesn't close the web view itself. To hear when a survey changes, for
+example to close the web view when it's finished, implement `SkyraSurveyListener` and
+pass it to the handler. It's called after the change is stored:
+
+```swift
+final class SurveyViewController: UIViewController, SkyraSurveyListener {
+    func surveyDidChange(_ slug: String, to state: SkyraState.Status) {
+        if state == .completed || state == .rejected {
+            dismiss(animated: true)
+        }
+    }
+}
+
+// Where you set up the web view:
+configuration.userContentController.add(
+    skyra.messageHandler(listener: self),
+    name: Skyra.messageHandlerName
+)
+```
+
+The handler holds the listener weakly, so the view controller can be its own
+listener.
+
 ## What the SDK remembers
 
 For each survey, the SDK keeps the visitor's last step:
