@@ -16,7 +16,7 @@ you get in a web view, using the page and handler the SDK gives you.
 
 From Skyra (ask at support@skyra.no):
 
-- your organisation's identifier;
+- your organisation's slug;
 - the `app-surveys` and `widget-store` features switched on for your organisation.
   `app-surveys` keeps a finished survey away until its retake time has passed.
   `widget-store` lets the survey in the web view report back to the app.
@@ -55,7 +55,7 @@ thread.
 
 | Setting | Meaning |
 | --- | --- |
-| `organization` | Your organisation's identifier in Skyra. Required. |
+| `organization` | Your organisation's slug in Skyra, such as `acme`: the `org` in your website's installation script. Required. |
 | `language` | The language your app shows its content in, such as `nb` or `en-GB`. |
 | `traits` | Traits that hold for the whole session, such as `plan`. |
 | `persistence` | `.persistent` (default) keeps what visitors did in UserDefaults; `.ephemeral` keeps it in memory. |
@@ -189,7 +189,7 @@ Merge rules and the stored format are in the [reference](Reference.md).
 - `print(try skyra.state())`. A `Completed` or `Rejected` survey is left out until its
   retake or retrigger time has passed. Use `.ephemeral` persistence while testing to
   start empty on each launch.
-- `decisionHTTPStatus(404)`: the organisation identifier is wrong.
+- `decisionHTTPStatus(404)`: the organisation slug is wrong.
 - `URLError` timeout: Skyra didn't answer within 1.5 seconds.
 
 **A finished survey comes back straight away.** `app-surveys` isn't switched on.

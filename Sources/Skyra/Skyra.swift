@@ -10,7 +10,7 @@ public struct SkyraConfiguration: Sendable {
         case ephemeral
     }
 
-    /// Your organisation's identifier in Skyra.
+    /// Your organisation's slug in Skyra, such as `acme`: the `org` in your website's installation script.
     public var organization: String
     /// The language your app shows its content in, such as `nb` or `en`. The device's own language
     /// setting is sent separately.
